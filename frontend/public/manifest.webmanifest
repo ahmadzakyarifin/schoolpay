@@ -1,0 +1,12 @@
+{
+  "name": "SchoolPay",
+  "short_name": "SchoolPay",
+  "description": "Sistem pembayaran sekolah dengan mode offline terbatas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/pwa-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
