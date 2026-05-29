@@ -1,0 +1,134 @@
+services:
+  db:
+    image: mariadb:latest
+    container_name: schoolpay
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+      TZ: Asia/Jakarta
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: schoolpay_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  migrate:
+    image: gomicro/goose
+    container_name: schoolpay_migrate
+    environment:
+      TZ: Asia/Jakarta
+    volumes:
+      - ./backend/database/migrations:/migrations
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until goose -dir /migrations mysql "${DB_USER}:${DB_PASS}@tcp(db:3306)/${DB_NAME}?parseTime=true" status; do
+          echo "Waiting for database to be ready..."
+          sleep 2
+        done
+        goose -dir /migrations mysql "${DB_USER}:${DB_PASS}@tcp(db:3306)/${DB_NAME}?parseTime=true" up
+    depends_on:
+      db:
+        condition: service_healthy
+
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: waha-schoolpay
+    restart: always
+    ports:
+      - "3050:3000"
+    volumes:
+      - ./waha_sessions:/app/.sessions
+    environment:
+      - TZ=Asia/Jakarta
+      - WHATSAPP_API_KEY=${WAHA_API_KEY}
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WHATSAPP_HOOK_URL=http://schoolpay_be:8080/wa-webhook
+      - WHATSAPP_DEFAULT_ENGINE=NOWEB
+      - WAHA_PRINT_QR=true
+      - WAHA_ZIP_LOGS=true
+      - WAHA_DASHBOARD_USERNAME=${WAHA_DASHBOARD_USERNAME}
+      - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
+      - WHATSAPP_SWAGGER_USERNAME=${WHATSAPP_SWAGGER_USERNAME}
+      - WHATSAPP_SWAGGER_PASSWORD=${WHATSAPP_SWAGGER_PASSWORD}
+
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      network: host
+    container_name: schoolpay_be
+    restart: always
+    volumes:
+      - ./backend/database/migrations:/app/migrations
+      - ./backend/public/uploads:/app/public/uploads
+    ports:
+      - "${PORT}:${PORT}"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      waha:
+        condition: service_started
+      redis:
+        condition: service_started
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      - TZ=Asia/Jakarta
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=db
+      - DB_PORT=3306
+      - PORT=${PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_EMAIL=${SMTP_EMAIL}
+      - SMTP_PASS=${SMTP_PASS}
+      - WAHA_URL=http://waha:3000
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WHATSAPP_HOOK_URL=http://schoolpay_be:8080/wa-webhook
+      - FRONTEND_URL=${FRONTEND_URL}
+      - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
+      - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
+      - MIDTRANS_IS_SANDBOX=${MIDTRANS_IS_SANDBOX}
+      - REDIS_ADDR=redis:6379
+
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: schoolpay_scheduler
+    environment:
+      - TZ=Asia/Jakarta
+    depends_on:
+      - waha
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: daemon --docker
+    labels:
+      ofelia.job-local.restart-waha.schedule: "@weekly"
+      ofelia.job-local.restart-waha.command: "docker restart waha-schoolpay"
+
+volumes:
+  mariadb_data:
+  redis_data:

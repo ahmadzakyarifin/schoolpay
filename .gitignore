@@ -21,12 +21,22 @@ profile.cov
 # vendor/
 
 # Go workspace file
-go.work
-go.work.sum
+# go.work
+# go.work.sum
 
 # env file
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+# Frontend build output
+frontend/dist/
+frontend/build_error.txt
+
+# Node modules
+node_modules/
+
+# WAHA sessions (sensitive data)
+waha_sessions/
