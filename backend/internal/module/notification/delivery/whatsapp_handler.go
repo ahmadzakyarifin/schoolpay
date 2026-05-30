@@ -96,8 +96,9 @@ func (h *WhatsAppHandler) GetLogs(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 	status := c.Query("status")
 	search := c.Query("search")
+	channel := c.Query("channel")
 
-	list, total, err := h.noti.GetDetailedLogs(c.Request.Context(), page, limit, status, search)
+	list, total, err := h.noti.GetDetailedLogs(c.Request.Context(), page, limit, status, search, channel)
 	if err != nil {
 		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return

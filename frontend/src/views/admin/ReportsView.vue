@@ -276,9 +276,8 @@ const currentPageArrearsTotal = computed(() => {
 const summaryCards = computed(() => {
   if (activeTab.value === 'arrears') {
     return [
-      { label: 'Data Tunggakan', value: totalData.value, helper: 'tagihan sesuai filter' },
-      { label: 'Sisa Tagihan Halaman Ini', value: formatCurrency(currentPageArrearsTotal.value), helper: `${previewData.value.length} item ditampilkan` },
-      { label: 'Perlu Ditindaklanjuti', value: previewData.value.filter(item => getRemainingDaysText(item.due_date).startsWith('Telat')).length, helper: 'item terlambat di halaman ini' }
+      { label: 'Sisa Tunggakan', value: formatCurrency(currentPageArrearsTotal.value), helper: 'nominal dari data pada halaman ini' },
+      { label: 'Lewat Jatuh Tempo', value: previewData.value.filter(item => getRemainingDaysText(item.due_date).startsWith('Telat')).length, helper: 'tagihan perlu ditindaklanjuti' }
     ]
   }
 
@@ -292,11 +291,6 @@ const summaryCards = computed(() => {
       label: 'Sisa Tunggakan',
       value: formatCurrency(summary.value?.unpaid_amount || 0),
       helper: `${summary.value?.unpaid_count || 0} tagihan belum lunas`
-    },
-    {
-      label: 'Ditampilkan',
-      value: totalData.value,
-      helper: 'transaksi sesuai filter'
     }
   ]
 })
@@ -425,7 +419,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div v-for="card in summaryCards" :key="card.label" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.22em]">{{ card.label }}</p>
         <p class="mt-2 text-xl font-black text-slate-800">{{ card.value }}</p>

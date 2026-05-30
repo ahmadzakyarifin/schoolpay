@@ -16,7 +16,7 @@ type NotificationRepo interface {
 	UpdateStatusByWhatsappID(ctx context.Context, whatsappID string, status string) error
 	GetStats(ctx context.Context) (map[string]int, error)
 	GetEfficacyStats(ctx context.Context, channel string, start, end *time.Time) (map[string]int, error)
-	GetDetailedLogs(ctx context.Context, page, limit int, status string, search string) ([]map[string]interface{}, int, error)
+	GetDetailedLogs(ctx context.Context, page, limit int, status string, search string, channel string) ([]map[string]interface{}, int, error)
 	FindByID(ctx context.Context, id uint) (*domain.Notification, error)
 }
 
@@ -151,7 +151,7 @@ func (r *notificationRepo) MarkAsRead(ctx context.Context, id uint) error {
 	return err
 }
 
-func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int, status string, search string) ([]map[string]interface{}, int, error) {
+func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int, status string, search string, channel string) ([]map[string]interface{}, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -161,9 +161,11 @@ func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int,
 
 	status = strings.TrimSpace(strings.ToLower(status))
 	search = strings.TrimSpace(search)
+	channel = strings.TrimSpace(strings.ToLower(channel))
 	base := r.db.NewSelect().
 		Model((*domain.Notification)(nil)).
-		ColumnExpr("n.id, n.user_id, n.title, n.message, n.type, n.is_read, n.whatsapp_id, n.delivery_status, n.delivery_error, n.created_at, n.updated_at").
+		ColumnExpr("n.id, n.user_id, n.title, n.message, n.type, n.is_read, n.whatsapp_id, n.delivery_error, n.created_at, n.updated_at").
+		ColumnExpr("CASE WHEN n.delivery_status IN ('SUCCESS') THEN 'sent' WHEN n.delivery_status IS NULL OR n.delivery_status = '' THEN 'pending' ELSE LOWER(n.delivery_status) END as delivery_status").
 		ColumnExpr("COALESCE(u.name, '') as recipient_name").
 		ColumnExpr("COALESCE(u.phone_number, '') as recipient_phone").
 		ColumnExpr("COALESCE(u.email, '') as recipient_email").
@@ -171,7 +173,12 @@ func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int,
 		Join("LEFT JOIN users u ON n.user_id = u.id")
 
 	if status != "" {
-		base.Where("LOWER(n.delivery_status) = ?", status)
+		base.Where("LOWER(CASE WHEN n.delivery_status IN ('SUCCESS') THEN 'sent' WHEN n.delivery_status IS NULL OR n.delivery_status = '' THEN 'pending' ELSE n.delivery_status END) = ?", status)
+	}
+	if channel == "whatsapp" {
+		base.Where("n.whatsapp_id IS NOT NULL AND n.whatsapp_id != ''")
+	} else if channel == "email" {
+		base.Where("n.whatsapp_id IS NULL OR n.whatsapp_id = ''")
 	}
 	if search != "" {
 		like := "%" + search + "%"

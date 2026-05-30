@@ -79,6 +79,7 @@ const filters = reactive({
   academic_year_id: '',
   class_id: '',
   major_id: '',
+  search: '',
   ref_date: new Date().toISOString().substring(0, 10),
   start_date: '',
   end_date: ''
@@ -89,6 +90,7 @@ const tempFilters = reactive({
   academic_year_id: '',
   class_id: '',
   major_id: '',
+  search: '',
   ref_date: new Date().toISOString().substring(0, 10),
   start_date: '',
   end_date: ''
@@ -148,6 +150,7 @@ const resetFilters = () => {
     academic_year_id: '',
     class_id: '',
     major_id: '',
+    search: '',
     ref_date: now.toISOString().substring(0, 10),
     start_date: '',
     end_date: ''
@@ -204,14 +207,60 @@ const printReceipt = (paymentID) => {
 const exportTrendToExcel = () => {
   if (isOffline.value) return
   if (paymentTrend.value.length === 0) return
-  const data = paymentTrend.value.map(t => ({
-    'Tanggal': t.date,
-    'Total Pemasukan': t.total
-  }))
-  const ws = XLSX.utils.json_to_sheet(data)
+  const rows = [
+    ['Laporan Tren Pendapatan'],
+    ['Periode', filters.period === 'all' ? 'Semua periode' : filters.period],
+    ['Tanggal Export', new Date().toLocaleString('id-ID')],
+    [],
+    ['Tanggal', 'Total Pemasukan']
+  ]
+  paymentTrend.value.forEach(t => rows.push([t.date, Number(t.total || 0)]))
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 18 }, { wch: 22 }]
+  for (let i = 6; i <= paymentTrend.value.length + 5; i++) {
+    const cell = ws[`B${i}`]
+    if (cell) cell.z = '"Rp" #,##0'
+  }
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Tren Pendapatan')
   XLSX.writeFile(wb, `Tren_Pendapatan_${filters.ref_date}.xlsx`)
+}
+
+const displayBillTypes = (value) => {
+  if (!value) return 'Pembayaran Deposit / Kustom'
+  if (typeof value === 'string') return value.split('||').filter(Boolean).join(', ') || 'Pembayaran Deposit / Kustom'
+  if (value.String !== undefined) return value.Valid === false ? 'Pembayaran Deposit / Kustom' : value.String
+  if (Array.isArray(value)) return value.join(', ')
+  return String(value)
+}
+
+const billTypeItems = (value) => {
+  const text = displayBillTypes(value)
+  if (!text || text === 'Pembayaran Deposit / Kustom') return [text]
+  return text.split(/\|\||,/).map(item => item.trim()).filter(Boolean)
+}
+
+const paymentDetailItems = (payment) => {
+  const rawDetails = payment?.bill_type_details
+  if (typeof rawDetails === 'string' && rawDetails.trim()) {
+    return rawDetails.split('||').map((item) => {
+      const [name, period, amount] = item.split('::')
+      return { name: name || 'Pembayaran Deposit / Kustom', period: period || '', amount: Number(String(amount || '0').replace(/[^0-9.-]/g, '')) || 0 }
+    }).filter(item => item.name)
+  }
+  return billTypeItems(payment?.bill_type_names).map(name => ({ name, period: '', amount: 0 }))
+}
+
+const paymentSummaryTitle = (payment) => {
+  const items = paymentDetailItems(payment)
+  if (items.length === 0) return 'Pembayaran Deposit / Kustom'
+  if (items.length === 1) return items[0].name
+  return `${items[0].name} + ${items.length - 1} tagihan`
+}
+
+const formatPaymentMethod = (method) => {
+  if (!method) return '-'
+  return String(method).replace(/_/g, ' ').toUpperCase()
 }
 
 const formatCurrency = (val) => {
@@ -467,6 +516,22 @@ onUnmounted(() => {
     <Teleport v-if="isMounted" to="#header-actions-target">
       <div class="flex items-end gap-2 font-inter pr-2">
 
+        <!-- Search -->
+        <div class="flex flex-col gap-1 min-w-[190px]">
+          <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Cari</label>
+          <div class="relative">
+            <SearchIcon class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input
+              v-model="tempFilters.search"
+              @keyup.enter="applyFilters"
+              @change="applyFilters"
+              type="text"
+              placeholder="Siswa, NIS, tagihan..."
+              class="h-8 w-full pl-8 pr-3 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 hover:border-indigo-300 transition-all"
+            />
+          </div>
+        </div>
+
         <!-- Periode -->
         <div class="flex flex-col gap-1">
           <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Periode</label>
@@ -605,26 +670,38 @@ onUnmounted(() => {
                <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
                   <WalletIcon class="w-4 h-4" />
                </div>
-               <div class="flex-1">
+               <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between">
-                    <p class="text-[11px] font-black text-slate-800 uppercase leading-tight">{{ pay.student_name }} Membayar</p>
-                    <button @click="printReceipt(pay.id)" class="opacity-0 group-hover:opacity-100 transition-all text-slate-400 hover:text-indigo-600">
+                    <p class="text-[11px] font-black text-slate-800 uppercase leading-tight truncate">{{ pay.student_name }} Membayar {{ paymentSummaryTitle(pay) }}</p>
+                    <button @click="printReceipt(pay.id)" class="opacity-0 group-hover:opacity-100 transition-all text-slate-400 hover:text-indigo-600 shrink-0" title="Cetak kwitansi">
                       <PrintIcon class="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <p class="text-[10px] font-bold text-slate-400 uppercase mt-1">{{ formatCurrency(pay.amount) }} • {{ pay.method }}</p>
-                  <p class="text-[9px] text-slate-300 mt-0.5">{{ formatDate(pay.created_at) }}</p>
+                  <p class="text-[10px] font-bold text-slate-500 uppercase mt-1">{{ formatCurrency(pay.amount) }} • {{ formatPaymentMethod(pay.method) }}</p>
+                  <p class="text-[9px] text-slate-300 mt-0.5">{{ formatDateTime(pay.created_at) }} <span v-if="pay.transaction_ref">• {{ pay.transaction_ref }}</span></p>
                </div>
             </div>
            <div v-for="notif in recentNotifications" :key="'n'+notif.id" class="flex gap-4">
-              <div :class="[notif.delivery_status === 'failed' ? 'bg-rose-50 text-rose-500' : 'bg-indigo-50 text-indigo-600', 'w-10 h-10 rounded-xl flex items-center justify-center shrink-0']">
-                 <component :is="notif.delivery_status === 'failed' ? AlertIcon : SendIcon" class="w-4 h-4" />
+              <div :class="[String(notif.delivery_status).toLowerCase() === 'failed' ? 'bg-rose-50 text-rose-500' : (notif.channel === 'email' ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600'), 'w-10 h-10 rounded-xl flex items-center justify-center shrink-0']">
+                 <component :is="String(notif.delivery_status).toLowerCase() === 'failed' ? AlertIcon : SendIcon" class="w-4 h-4" />
               </div>
-              <div>
-                 <p class="text-[11px] font-black text-slate-800 uppercase leading-tight">{{ notif.title }}</p>
-                 <p class="text-[10px] font-medium text-slate-500 line-clamp-1 mt-1">{{ notif.recipient_name }} • {{ notif.delivery_status }}</p>
-                 <p class="text-[9px] text-slate-300 mt-0.5">{{ new Date(notif.created_at).toLocaleTimeString() }}</p>
+              <div class="min-w-0 flex-1">
+                 <div class="flex items-center gap-2">
+                   <p class="text-[11px] font-black text-slate-800 uppercase leading-tight truncate">{{ notif.title }}</p>
+                   <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0" :class="channelBadgeClass(notif.channel || (notif.whatsapp_id ? 'whatsapp' : 'email'))">
+                     {{ notif.channel || (notif.whatsapp_id ? 'WA' : 'Email') }}
+                   </span>
+                 </div>
+                 <p class="text-[10px] font-medium text-slate-500 line-clamp-1 mt-1">{{ notif.recipient_name || 'Penerima' }} • {{ notif.message }}</p>
+                 <div class="mt-1 flex items-center gap-2">
+                   <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border" :class="statusBadgeClass(notif.delivery_status)">{{ statusLabel(notif.delivery_status) }}</span>
+                   <span class="text-[9px] text-slate-300">{{ formatDateTime(notif.created_at) }}</span>
+                 </div>
               </div>
+           </div>
+           <div v-if="recentPayments.length === 0 && recentNotifications.length === 0" class="py-16 text-center">
+             <ClockIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
+             <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Belum ada aktivitas sesuai filter</p>
            </div>
         </div>
         <button @click="router.push('/reports')" class="p-4 bg-slate-50 text-indigo-600 text-[10px] font-black uppercase text-center hover:bg-indigo-50 transition-all border-t border-slate-100">
@@ -650,7 +727,7 @@ onUnmounted(() => {
     <!-- 5. Operational Sections (Activity Style) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-10">
       <!-- Critical Arrears -->
-      <div class="white-card p-0 flex flex-col h-[600px]">
+      <div class="white-card p-0 flex flex-col h-[600px] lg:order-2">
         <div class="p-8 border-b border-slate-50 flex items-center justify-between">
            <div class="flex items-center gap-3">
               <div class="w-1.5 h-6 bg-rose-500 rounded-full"></div>
@@ -687,7 +764,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Upcoming Bills -->
-      <div class="white-card p-0 flex flex-col h-[600px]">
+      <div class="white-card p-0 flex flex-col h-[600px] lg:order-1">
         <div class="p-8 border-b border-slate-50 flex items-center justify-between">
            <div class="flex items-center gap-3">
               <div class="w-1.5 h-6 bg-amber-500 rounded-full"></div>

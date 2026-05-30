@@ -286,7 +286,7 @@ func Test_notificationRepo_GetDetailedLogs(t *testing.T) {
 			r := &notificationRepo{
 				db: tt.fields.db,
 			}
-			got, got1, err := r.GetDetailedLogs(tt.args.ctx, tt.args.page, tt.args.limit, tt.args.status, "")
+			got, got1, err := r.GetDetailedLogs(tt.args.ctx, tt.args.page, tt.args.limit, tt.args.status, "", "")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("notificationRepo.GetDetailedLogs() error = %v, wantErr %v", err, tt.wantErr)
 			}

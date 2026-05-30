@@ -17,6 +17,7 @@ const customMessageOverride = ref('')
 const isManualOverride = ref(false)
 const selectedTemplate = ref('standard')
 const skipNotification = ref(false)
+const cancelReasonRequired = computed(() => props.generateActionType === 'bulk_cancel' && !customReason.value.trim())
 
 const defaultPreview = computed(() => {
   if (!props.isPenyesuaian) {
@@ -53,6 +54,7 @@ const close = () => {
 }
 
 const confirmAction = () => {
+  if (cancelReasonRequired.value) return
   emit('confirm', {
     customReason: customReason.value,
     customMessage: isManualOverride.value ? customMessageOverride.value : '',
@@ -79,8 +81,9 @@ const confirmAction = () => {
               Sistem akan menarik tagihan dari {{ selectedCount }} aturan terpilih. Jika sudah ada pembayaran, dana akan dipindahkan ke saldo deposit siswa dan riwayat transaksi tetap aman.
             </p>
             <div class="text-left space-y-2 mb-5">
-              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alasan Penarikan (Opsional)</label>
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Alasan Penarikan (Wajib)</label>
               <textarea v-model="customReason" rows="3" class="w-full p-4 bg-amber-50/60 border border-amber-100 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:bg-white focus:border-amber-400" placeholder="Contoh: Koreksi aturan tagihan karena nominal/periode salah."></textarea>
+              <p v-if="cancelReasonRequired" class="text-[10px] font-bold text-rose-500">Alasan wajib diisi agar tindakan ini tercatat jelas di audit.</p>
               <label class="flex items-center gap-2 text-[10px] font-black text-rose-600 uppercase tracking-wider cursor-pointer">
                 <input v-model="skipNotification" type="checkbox" class="rounded border-rose-200 text-rose-500" />
                 Jangan kirim notifikasi ke orang tua
@@ -88,7 +91,7 @@ const confirmAction = () => {
             </div>
             <div class="grid grid-cols-2 gap-4">
               <button @click="close" class="py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all cursor-pointer">Batalkan</button>
-              <button @click="confirmAction" :disabled="generateSubmitting" class="py-4 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-amber-600/20 disabled:opacity-50 cursor-pointer">
+              <button @click="confirmAction" :disabled="generateSubmitting || cancelReasonRequired" class="py-4 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-amber-600/20 disabled:opacity-50 cursor-pointer">
                 {{ generateSubmitting ? 'Memproses...' : 'Ya, Tarik Tagihan' }}
               </button>
             </div>

@@ -96,9 +96,9 @@ func (_m *NotificationRepo) GetByUserID(ctx context.Context, userID uint) ([]dom
 	return r0, r1
 }
 
-// GetDetailedLogs provides a mock function with given fields: ctx, page, limit, status
-func (_m *NotificationRepo) GetDetailedLogs(ctx context.Context, page int, limit int, status string, search string) ([]map[string]interface{}, int, error) {
-	ret := _m.Called(ctx, page, limit, status, search)
+// GetDetailedLogs provides a mock function with given fields: ctx, page, limit, status, search, channel
+func (_m *NotificationRepo) GetDetailedLogs(ctx context.Context, page int, limit int, status string, search string, channel string) ([]map[string]interface{}, int, error) {
+	ret := _m.Called(ctx, page, limit, status, search, channel)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetDetailedLogs")
@@ -107,25 +107,25 @@ func (_m *NotificationRepo) GetDetailedLogs(ctx context.Context, page int, limit
 	var r0 []map[string]interface{}
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, int, int, string, string) ([]map[string]interface{}, int, error)); ok {
-		return rf(ctx, page, limit, status, search)
+	if rf, ok := ret.Get(0).(func(context.Context, int, int, string, string, string) ([]map[string]interface{}, int, error)); ok {
+		return rf(ctx, page, limit, status, search, channel)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, int, int, string, string) []map[string]interface{}); ok {
-		r0 = rf(ctx, page, limit, status, search)
+	if rf, ok := ret.Get(0).(func(context.Context, int, int, string, string, string) []map[string]interface{}); ok {
+		r0 = rf(ctx, page, limit, status, search, channel)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]map[string]interface{})
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, int, int, string, string) int); ok {
-		r1 = rf(ctx, page, limit, status, search)
+	if rf, ok := ret.Get(1).(func(context.Context, int, int, string, string, string) int); ok {
+		r1 = rf(ctx, page, limit, status, search, channel)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, int, int, string, string) error); ok {
-		r2 = rf(ctx, page, limit, status, search)
+	if rf, ok := ret.Get(2).(func(context.Context, int, int, string, string, string) error); ok {
+		r2 = rf(ctx, page, limit, status, search, channel)
 	} else {
 		r2 = ret.Error(2)
 	}

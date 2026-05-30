@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
@@ -157,6 +158,10 @@ func (h *StudentBillHandler) BulkCancel(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		return
+	}
+	if strings.TrimSpace(req.CustomReason) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "alasan penarikan tagihan wajib diisi untuk kebutuhan audit")
 		return
 	}
 

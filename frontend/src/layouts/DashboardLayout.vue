@@ -566,7 +566,7 @@ const initWebSocket = () => {
   }
 
   ws.onclose = () => {
-    console.log('WS Disconnected, retrying in 5s...')
+    console.warn('WS disconnected, retrying in 5s...')
     setTimeout(initWebSocket, 5000)
   }
 

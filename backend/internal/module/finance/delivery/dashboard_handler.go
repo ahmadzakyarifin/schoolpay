@@ -2,16 +2,20 @@ package delivery
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	academicdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/domain"
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
+	financedomain "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
 	financerepo "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
+	userauthdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -40,6 +44,190 @@ func NewDashboardHandler(
 	audit auditusecase.AuditLogService,
 ) *DashboardHandler {
 	return &DashboardHandler{db, userRepo, stuRepo, finRepo, ayRepo, notifRepo, audit}
+}
+
+func (h *DashboardHandler) countUsersForDashboard(ctx context.Context, start, end *time.Time, search string) (int, error) {
+	q := h.db.NewSelect().Model((*userauthdomain.User)(nil))
+	if start != nil {
+		q.Where("u.created_at >= ?", start)
+	}
+	if end != nil {
+		q.Where("u.created_at <= ?", end)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		q.WhereGroup(" AND ", func(sq *bun.SelectQuery) *bun.SelectQuery {
+			return sq.Where("u.name LIKE ?", like).
+				WhereOr("u.email LIKE ?", like).
+				WhereOr("u.phone_number LIKE ?", like).
+				WhereOr("EXISTS (SELECT 1 FROM students st WHERE st.parent_id = u.id AND st.name LIKE ? AND st.deleted_at IS NULL)", like)
+		})
+	}
+	return q.Count(ctx)
+}
+
+func (h *DashboardHandler) countStudentsForDashboard(ctx context.Context, start, end *time.Time, academicYear int, classID, majorID uint, search string) (int, error) {
+	q := h.db.NewSelect().
+		Model((*academicdomain.Student)(nil)).
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
+		Where("s.status = 'active'")
+	if start != nil {
+		q.Where("s.created_at >= ?", start)
+	}
+	if end != nil {
+		q.Where("s.created_at <= ?", end)
+	}
+	applyDashboardStudentFilters(q, academicYear, classID, majorID, search)
+	return q.Count(ctx)
+}
+
+func (h *DashboardHandler) sumBillsForDashboard(ctx context.Context, start, end *time.Time, academicYear int, classID, majorID uint, search string) (float64, error) {
+	var total float64
+	q := h.db.NewSelect().
+		Model((*financedomain.StudentBill)(nil)).
+		ColumnExpr("COALESCE(SUM(sb.amount - sb.total_paid), 0)").
+		Join("JOIN students s ON sb.student_id = s.id").
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
+		Join("LEFT JOIN bill_types bt ON sb.bill_type_id = bt.id").
+		Where("sb.status != 'paid' AND sb.status != 'voided'")
+	if start != nil {
+		q.Where("sb.created_at >= ?", start)
+	}
+	if end != nil {
+		q.Where("sb.created_at <= ?", end)
+	}
+	applyDashboardStudentFilters(q, academicYear, classID, majorID, "")
+	applyDashboardBillSearch(q, search)
+	return total, q.Scan(ctx, &total)
+}
+
+func (h *DashboardHandler) sumPaymentsForDashboard(ctx context.Context, start, end *time.Time, academicYear int, classID, majorID uint, search string) (float64, error) {
+	var total float64
+	q := h.db.NewSelect().
+		Model((*financedomain.Payment)(nil)).
+		ColumnExpr("COALESCE(SUM(p.amount), 0)").
+		Join("JOIN students s ON p.student_id = s.id").
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
+		Where("p.status = 'success'")
+	if start != nil {
+		q.Where("p.paid_at >= ?", start)
+	}
+	if end != nil {
+		q.Where("p.paid_at <= ?", end)
+	}
+	applyDashboardStudentFilters(q, academicYear, classID, majorID, "")
+	applyDashboardPaymentSearch(q, search)
+	return total, q.Scan(ctx, &total)
+}
+
+func (h *DashboardHandler) dashboardSummaryForSearch(ctx context.Context, start, end *time.Time, academicYear int, classID, majorID uint, search string) map[string]interface{} {
+	res := map[string]interface{}{
+		"total_paid_amount":   0.0,
+		"total_unpaid_amount": 0.0,
+		"paid_count":          0,
+		"unpaid_count":        0,
+	}
+
+	var unpaid struct {
+		Amount float64 `bun:"amount"`
+		Count  int     `bun:"count"`
+	}
+	qUnpaid := h.db.NewSelect().
+		Model((*financedomain.StudentBill)(nil)).
+		ColumnExpr("COALESCE(SUM(sb.amount - sb.total_paid), 0) as amount").
+		ColumnExpr("COUNT(sb.id) as count").
+		Join("JOIN students s ON sb.student_id = s.id").
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
+		Join("LEFT JOIN bill_types bt ON sb.bill_type_id = bt.id").
+		Where("sb.status != 'paid' AND sb.status != 'voided'")
+	if end != nil {
+		qUnpaid.Where("sb.created_at <= ?", end)
+	}
+	applyDashboardStudentFilters(qUnpaid, academicYear, classID, majorID, "")
+	applyDashboardBillSearch(qUnpaid, search)
+	_ = qUnpaid.Scan(ctx, &unpaid)
+
+	var paid struct {
+		Amount float64 `bun:"amount"`
+		Count  int     `bun:"count"`
+	}
+	qPaid := h.db.NewSelect().
+		Model((*financedomain.Payment)(nil)).
+		ColumnExpr("COALESCE(SUM(p.amount), 0) as amount").
+		ColumnExpr("COUNT(p.id) as count").
+		Join("JOIN students s ON p.student_id = s.id").
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
+		Where("p.status = 'success'")
+	if start != nil {
+		qPaid.Where("p.paid_at >= ?", start)
+	}
+	if end != nil {
+		qPaid.Where("p.paid_at <= ?", end)
+	}
+	applyDashboardStudentFilters(qPaid, academicYear, classID, majorID, "")
+	applyDashboardPaymentSearch(qPaid, search)
+	_ = qPaid.Scan(ctx, &paid)
+
+	res["total_paid_amount"] = paid.Amount
+	res["total_unpaid_amount"] = unpaid.Amount
+	res["paid_count"] = paid.Count
+	res["unpaid_count"] = unpaid.Count
+	return res
+}
+
+func applyDashboardStudentFilters(q *bun.SelectQuery, academicYear int, classID, majorID uint, search string) {
+	if academicYear > 0 {
+		if academicYear < 1000 {
+			q.Where("s.entry_year = (SELECT year FROM academic_years WHERE id = ?)", academicYear)
+		} else {
+			q.Where("s.entry_year = ?", academicYear)
+		}
+	}
+	if classID > 0 {
+		q.Where("s.class_id = ?", classID)
+	}
+	if majorID > 0 {
+		q.Where("s.major_id = ? OR c.major_id = ?", majorID, majorID)
+	}
+	if search != "" {
+		like := "%" + search + "%"
+		q.WhereGroup(" AND ", func(sq *bun.SelectQuery) *bun.SelectQuery {
+			return sq.Where("s.name LIKE ?", like).
+				WhereOr("s.nis LIKE ?", like).
+				WhereOr("s.nisn LIKE ?", like).
+				WhereOr("s.email LIKE ?", like).
+				WhereOr("s.phone_number LIKE ?", like)
+		})
+	}
+}
+
+func applyDashboardBillSearch(q *bun.SelectQuery, search string) {
+	if search != "" {
+		like := "%" + search + "%"
+		q.WhereGroup(" AND ", func(sq *bun.SelectQuery) *bun.SelectQuery {
+			return sq.Where("s.name LIKE ?", like).
+				WhereOr("s.nis LIKE ?", like).
+				WhereOr("s.nisn LIKE ?", like).
+				WhereOr("s.email LIKE ?", like).
+				WhereOr("s.phone_number LIKE ?", like).
+				WhereOr("bt.name LIKE ?", like).
+				WhereOr("sb.name LIKE ?", like)
+		})
+	}
+}
+
+func applyDashboardPaymentSearch(q *bun.SelectQuery, search string) {
+	if search != "" {
+		like := "%" + search + "%"
+		q.WhereGroup(" AND ", func(sq *bun.SelectQuery) *bun.SelectQuery {
+			return sq.Where("s.name LIKE ?", like).
+				WhereOr("s.nis LIKE ?", like).
+				WhereOr("s.nisn LIKE ?", like).
+				WhereOr("s.email LIKE ?", like).
+				WhereOr("s.phone_number LIKE ?", like).
+				WhereOr("p.transaction_ref LIKE ?", like)
+		})
+	}
 }
 
 func (h *DashboardHandler) GetStats(c *gin.Context) {
@@ -137,6 +325,20 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 	prevBills, _ := h.finRepo.GetTotalBillsByPeriod(ctx, pPrevStart, pPrevEnd, filterEntryYear, uint(classID), uint(majorID))
 	prevPayments, _ := h.finRepo.GetTotalPaymentsByPeriod(ctx, pPrevStart, pPrevEnd, filterEntryYear, uint(classID), uint(majorID))
 
+	search = strings.TrimSpace(search)
+	if search != "" {
+		currUsers, _ = h.countUsersForDashboard(ctx, pStart, pEnd, search)
+		totalUsers, _ = h.countUsersForDashboard(ctx, nil, nil, search)
+		currStudents, _ = h.countStudentsForDashboard(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID), search)
+		totalStudents, _ = h.countStudentsForDashboard(ctx, nil, nil, filterEntryYear, uint(classID), uint(majorID), search)
+		currBills, _ = h.sumBillsForDashboard(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID), search)
+		currPayments, _ = h.sumPaymentsForDashboard(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID), search)
+		prevUsers, _ = h.countUsersForDashboard(ctx, pPrevStart, pPrevEnd, search)
+		prevStudents, _ = h.countStudentsForDashboard(ctx, pPrevStart, pPrevEnd, filterEntryYear, uint(classID), uint(majorID), search)
+		prevBills, _ = h.sumBillsForDashboard(ctx, pPrevStart, pPrevEnd, filterEntryYear, uint(classID), uint(majorID), search)
+		prevPayments, _ = h.sumPaymentsForDashboard(ctx, pPrevStart, pPrevEnd, filterEntryYear, uint(classID), uint(majorID), search)
+	}
+
 	// Demographics
 	genderStats, _ := h.stuRepo.CountByGender(ctx, filterEntryYear, uint(classID), uint(majorID))
 	majorStats, _ := h.stuRepo.CountByMajor(ctx, filterEntryYear, uint(classID), uint(majorID))
@@ -147,6 +349,9 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 
 	// Summary
 	summary, _ := h.finRepo.GetDashboardSummary(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID))
+	if search != "" {
+		summary = h.dashboardSummaryForSearch(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID), search)
+	}
 
 	// Methods & Efficacy
 	paymentMethods, _ := h.finRepo.GetPaymentMethodsCount(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID))
@@ -163,7 +368,7 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 	recentPayments, totalPaymentsCount, _ := h.finRepo.GetRecentPayments(ctx, pStart, pEnd, filterEntryYear, uint(classID), uint(majorID), uint(billTypeID), search, page, limit)
 
 	// Recent Notifications
-	recentNotifications, _, _ := h.notifRepo.GetDetailedLogs(ctx, 1, 5, "", "")
+	recentNotifications, _, _ := h.notifRepo.GetDetailedLogs(ctx, 1, 5, "", search, "")
 
 	// Available academic years
 	activeAY, _, _ := h.ayRepo.FindAll(ctx, 1, 100, "", "", "")
