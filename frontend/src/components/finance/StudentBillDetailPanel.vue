@@ -34,6 +34,38 @@ const formatCurrency = (val) => {
   return 'Rp ' + clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
+const monthNames = {
+  '01': 'Januari',
+  '02': 'Februari',
+  '03': 'Maret',
+  '04': 'April',
+  '05': 'Mei',
+  '06': 'Juni',
+  '07': 'Juli',
+  '08': 'Agustus',
+  '09': 'September',
+  '10': 'Oktober',
+  '11': 'November',
+  '12': 'Desember'
+}
+
+const formatPeriod = (period) => {
+  if (!period) return 'Sekali Bayar'
+  const match = String(period).match(/^(\d{4})-(\d{2})$/)
+  if (!match) return period
+  return `${monthNames[match[2]] || match[2]} ${match[1]}`
+}
+
+const displayBillName = (bill) => {
+  return bill?.name || (bill?.period ? `${bill.bill_type_name} ${formatPeriod(bill.period)}` : bill?.bill_type_name)
+}
+
+const paymentDetailNames = (payment) => {
+  const details = payment?.details || []
+  if (details.length === 0) return []
+  return details.map(detail => detail.bill_type_name || detail.bill_name || 'Tagihan')
+}
+
 const getBillByMonth = (month) => {
   if (!props.selectedStudent?.bills) return null
   const period = `${props.selectedRecapYear}-${month}`
@@ -86,9 +118,9 @@ const getBillByMonth = (month) => {
               <CheckIcon v-if="selectedBills.includes(bill.id)" class="w-3 h-3 text-white" />
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate">{{ bill.bill_type_name }}</p>
+              <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate">{{ displayBillName(bill) }}</p>
               <div class="flex items-center gap-2 mt-0.5">
-                <p class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">PERIODE {{ bill.period || 'SEKALI BAYAR' }}</p>
+                <p class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">PERIODE {{ formatPeriod(bill.period) }}</p>
                 <span v-if="bill.allow_installment" class="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[7px] font-black uppercase">
                   Bisa Dicicil (Maks {{ bill.max_installment }}x)
                 </span>
@@ -187,6 +219,14 @@ const getBillByMonth = (month) => {
             <div class="flex-1 min-w-0">
               <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate">Pembayaran #{{ pay.id }}</p>
               <p class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{{ new Date(pay.paid_at).toLocaleString() }} • {{ pay.method }}</p>
+              <div v-if="paymentDetailNames(pay).length" class="mt-2 flex flex-wrap gap-1.5">
+                <span v-for="name in paymentDetailNames(pay).slice(0, 2)" :key="name" class="max-w-[140px] truncate px-2 py-1 bg-slate-100 rounded-lg text-[7px] font-black text-slate-500 uppercase tracking-wider">
+                  {{ name }}
+                </span>
+                <span v-if="paymentDetailNames(pay).length > 2" class="px-2 py-1 bg-indigo-50 rounded-lg text-[7px] font-black text-indigo-600 uppercase tracking-wider">
+                  +{{ paymentDetailNames(pay).length - 2 }}
+                </span>
+              </div>
             </div>
             <div class="text-right shrink-0">
               <p class="text-xs font-black text-slate-800">{{ formatCurrency(pay.amount) }}</p>

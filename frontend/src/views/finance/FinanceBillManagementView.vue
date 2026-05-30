@@ -59,6 +59,32 @@ const recapYears = computed(() => {
 
 const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 
+const monthNames = {
+  '01': 'Januari',
+  '02': 'Februari',
+  '03': 'Maret',
+  '04': 'April',
+  '05': 'Mei',
+  '06': 'Juni',
+  '07': 'Juli',
+  '08': 'Agustus',
+  '09': 'September',
+  '10': 'Oktober',
+  '11': 'November',
+  '12': 'Desember'
+}
+
+const formatPeriod = (period) => {
+  if (!period) return 'Sekali Bayar'
+  const match = String(period).match(/^(\d{4})-(\d{2})$/)
+  if (!match) return period
+  return `${monthNames[match[2]] || match[2]} ${match[1]}`
+}
+
+const displayBillName = (bill) => {
+  return bill?.name || (bill?.period ? `${bill.bill_type_name} ${formatPeriod(bill.period)}` : bill?.bill_type_name)
+}
+
 const getBillByMonth = (month) => {
   if (!selectedStudent.value?.bills) return null
   const period = `${selectedRecapYear.value}-${month}`
@@ -300,7 +326,7 @@ const allocationResult = computed(() => {
     const paying = Math.min(remaining, toPay)
     allocation.push({
       id: bill.id,
-      name: bill.bill_type_name,
+      name: displayBillName(bill),
       period: bill.period,
       amount: paying,
       is_lunas: paying >= toPay

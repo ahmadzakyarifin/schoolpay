@@ -68,8 +68,11 @@ func (r *notificationRepo) GetStats(ctx context.Context) (map[string]int, error)
 	}
 
 	result := make(map[string]int)
+	for _, status := range []string{"PENDING", "SENT", "DELIVERED", "READ", "FAILED"} {
+		result[status] = 0
+	}
 	for _, s := range stats {
-		result[strings.ToUpper(s.Status)] = s.Count
+		result[normalizeDeliveryStatus(s.Status)] += s.Count
 	}
 	return result, nil
 }
@@ -92,9 +95,9 @@ func (r *notificationRepo) GetEfficacyStats(ctx context.Context, channel string,
 	}
 
 	if channel == "whatsapp" {
-		q.Where("whatsapp_id IS NOT NULL")
+		q.Where("whatsapp_id IS NOT NULL AND whatsapp_id != ''")
 	} else {
-		q.Where("whatsapp_id IS NULL")
+		q.Where("whatsapp_id IS NULL OR whatsapp_id = ''")
 	}
 
 	err := q.Group("delivery_status").Scan(ctx, &stats)
@@ -103,10 +106,30 @@ func (r *notificationRepo) GetEfficacyStats(ctx context.Context, channel string,
 	}
 
 	result := make(map[string]int)
+	for _, status := range []string{"pending", "sent", "delivered", "read", "failed"} {
+		result[status] = 0
+	}
 	for _, s := range stats {
-		result[strings.ToLower(s.Status)] = s.Count
+		result[strings.ToLower(normalizeDeliveryStatus(s.Status))] += s.Count
 	}
 	return result, nil
+}
+
+func normalizeDeliveryStatus(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "SUCCESS":
+		return "SENT"
+	case "DELIVERED":
+		return "DELIVERED"
+	case "READ":
+		return "READ"
+	case "FAILED", "ERROR":
+		return "FAILED"
+	case "PENDING", "":
+		return "PENDING"
+	default:
+		return "SENT"
+	}
 }
 
 func (r *notificationRepo) GetByUserID(ctx context.Context, userID uint) ([]domain.Notification, error) {

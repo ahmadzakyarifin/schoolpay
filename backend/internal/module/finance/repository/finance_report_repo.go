@@ -260,9 +260,12 @@ func (r *financeReportRepo) GetRecentPayments(ctx context.Context, start, end *t
 	var list []map[string]interface{}
 	q := r.db.NewSelect().
 		Model((*domain.Payment)(nil)).
-		ColumnExpr("p.id, p.amount, COALESCE(p.deposit_applied, 0) as deposit_applied, (p.amount - COALESCE(p.deposit_applied, 0)) as cash_or_gateway_amount, p.method, p.paid_at as created_at, s.name as student_name").
-		ColumnExpr("CAST(COALESCE((SELECT GROUP_CONCAT(bt.name SEPARATOR ', ') FROM payment_details pd JOIN student_bills sb ON pd.student_bill_id = sb.id JOIN bill_types bt ON sb.bill_type_id = bt.id WHERE pd.payment_id = p.id), '') AS CHAR) as bill_type_names").
+		ColumnExpr("p.id, p.transaction_ref, p.channel, p.created_by, p.amount, COALESCE(p.deposit_applied, 0) as deposit_applied, (p.amount - COALESCE(p.deposit_applied, 0)) as cash_or_gateway_amount, p.method, p.paid_at as created_at, s.name as student_name, COALESCE(c.name, '') as class_name").
+		ColumnExpr("CAST(COALESCE((SELECT GROUP_CONCAT(COALESCE(NULLIF(sb.name, ''), IF(COALESCE(sb.period, '') != '', CONCAT(bt.name, ' ', sb.period), bt.name)) ORDER BY sb.due_date ASC SEPARATOR '||') FROM payment_details pd JOIN student_bills sb ON pd.student_bill_id = sb.id JOIN bill_types bt ON sb.bill_type_id = bt.id WHERE pd.payment_id = p.id), '') AS CHAR) as bill_type_names").
+		ColumnExpr("CAST(COALESCE((SELECT GROUP_CONCAT(CONCAT(COALESCE(NULLIF(sb.name, ''), IF(COALESCE(sb.period, '') != '', CONCAT(bt.name, ' ', sb.period), bt.name)), '::', COALESCE(sb.period, ''), '::', FORMAT(pd.amount, 0)) ORDER BY sb.due_date ASC SEPARATOR '||') FROM payment_details pd JOIN student_bills sb ON pd.student_bill_id = sb.id JOIN bill_types bt ON sb.bill_type_id = bt.id WHERE pd.payment_id = p.id), '') AS CHAR) as bill_type_details").
+		ColumnExpr("(SELECT COUNT(*) FROM payment_details pd WHERE pd.payment_id = p.id) as bill_item_count").
 		Join("JOIN students s ON p.student_id = s.id").
+		Join("LEFT JOIN classes c ON s.class_id = c.id").
 		Where("p.status = 'success'")
 
 	if billTypeID > 0 {
@@ -294,7 +297,7 @@ func (r *financeReportRepo) GetRecentPayments(ctx context.Context, start, end *t
 		q.Where("s.name LIKE ? OR s.nis LIKE ?", "%"+search+"%", "%"+search+"%")
 	}
 
-	total, err := q.Group("p.id").
+	total, err := q.Group("p.id", "p.transaction_ref", "p.channel", "p.created_by", "p.amount", "p.deposit_applied", "p.method", "p.paid_at", "s.name", "c.name").
 		Order("p.paid_at DESC").
 		Limit(limit).
 		Offset((page-1)*limit).

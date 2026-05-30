@@ -275,7 +275,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useToast } from '../../composables/useToast'
 import { 
@@ -334,6 +334,11 @@ const resetFilters = () => {
   searchQuery.value = ''
   selectedStatus.value = ''
   fetchLogs(1)
+}
+
+const handleNotificationStatusChanged = () => {
+  fetchStats()
+  fetchLogs(page.value)
 }
 
 const totalPages = computed(() => {
@@ -441,6 +446,11 @@ onMounted(() => {
   isMounted.value = true
   fetchStats()
   fetchLogs(1)
+  window.addEventListener('notification-status-changed', handleNotificationStatusChanged)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('notification-status-changed', handleNotificationStatusChanged)
 })
 </script>
 

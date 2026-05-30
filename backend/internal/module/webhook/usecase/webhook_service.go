@@ -107,6 +107,13 @@ func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.Raw
 				}
 				fmt.Printf("[WA-WEBHOOK] Message ACK: %s -> %s\n", messageID, status)
 				_ = s.notiRepo.UpdateStatusByWhatsappID(ctx, messageID, status)
+				if s.hub != nil {
+					s.hub.Broadcast("NOTIFICATION_STATUS_CHANGED", map[string]interface{}{
+						"message_id": messageID,
+						"status":     status,
+						"channel":    "whatsapp",
+					})
+				}
 			}
 		}
 	}

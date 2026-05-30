@@ -88,6 +88,28 @@ const formatCurrency = (val) => {
   const clean = Number(val).toFixed(0)
   return 'Rp ' + clean.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
+
+const monthNames = {
+  '01': 'Januari',
+  '02': 'Februari',
+  '03': 'Maret',
+  '04': 'April',
+  '05': 'Mei',
+  '06': 'Juni',
+  '07': 'Juli',
+  '08': 'Agustus',
+  '09': 'September',
+  '10': 'Oktober',
+  '11': 'November',
+  '12': 'Desember'
+}
+
+const formatPeriod = (period) => {
+  if (!period) return 'Sekali Bayar'
+  const match = String(period).match(/^(\d{4})-(\d{2})$/)
+  if (!match) return period
+  return `${monthNames[match[2]] || match[2]} ${match[1]}`
+}
 </script>
 
 <template>
@@ -214,7 +236,7 @@ const formatCurrency = (val) => {
                   <div>
                     <p class="text-[9px] font-black text-slate-700 uppercase tracking-wider">{{ item.name }}</p>
                     <p class="text-[7px] font-bold text-slate-400 uppercase">
-                      {{ item.is_lunas ? 'PELUNASAN' : 'DICICIL' }} • {{ item.period || 'SEKALI BAYAR' }}
+                      {{ item.is_lunas ? 'PELUNASAN' : 'DICICIL' }} • {{ formatPeriod(item.period) }}
                     </p>
                   </div>
                 </div>

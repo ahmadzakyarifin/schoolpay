@@ -263,6 +263,7 @@ func SetupAdminRoutes(
 	// WhatsApp Management
 	g.GET("/whatsapp/status", waHdl.GetStatus)
 	g.GET("/whatsapp/qr", waHdl.GetQR)
+	g.POST("/whatsapp/restart", whatsappChatLimit, waHdl.Restart)
 	g.POST("/whatsapp/logout", whatsappChatLimit, waHdl.Logout)
 	g.GET("/whatsapp/stats", waHdl.GetStats)
 	g.GET("/whatsapp/logs", waHdl.GetLogs)

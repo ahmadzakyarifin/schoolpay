@@ -142,6 +142,9 @@
                   <button v-else @click="changeWANumber" :disabled="waActionLoading" class="w-full py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50">
                     Ganti Nomor WhatsApp
                   </button>
+                  <button @click="restartWA" :disabled="waActionLoading" class="w-full py-3 bg-white text-slate-600 border border-slate-200 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all disabled:opacity-50">
+                    Restart Session
+                  </button>
                   <button v-if="['WORKING', 'CONNECTED', 'STARTING', 'SCANNING'].includes(waStatus)" @click="disconnectWA" :disabled="waActionLoading" class="w-full py-3 bg-white text-rose-600 border border-rose-100 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 transition-all disabled:opacity-50">
                     Logout WhatsApp
                   </button>
@@ -468,6 +471,21 @@ const changeWANumber = async () => {
   }
 }
 
+const restartWA = async () => {
+  if (waActionLoading.value) return
+  waActionLoading.value = true
+  try {
+    await axios.post('whatsapp/restart')
+    waStatus.value = 'STARTING'
+    toast.success('Session direstart', 'SchoolPay sedang menyambungkan ulang WhatsApp.')
+    setTimeout(fetchWAStatus, 1500)
+  } catch (err) {
+    toast.error('Gagal restart WhatsApp', err.response?.data?.message || 'WAHA/server tidak merespon')
+  } finally {
+    waActionLoading.value = false
+  }
+}
+
 const refreshOfflinePendingCount = async () => {
   try {
     offlinePendingCount.value = await getOfflineOutboxCount()
@@ -536,6 +554,8 @@ const initWebSocket = () => {
         if (['WORKING', 'CONNECTED'].includes(waStatus.value) && showQRModal.value) {
           showQRModal.value = false
         }
+      } else if (msg.topic === 'NOTIFICATION_STATUS_CHANGED') {
+        window.dispatchEvent(new CustomEvent('notification-status-changed', { detail: msg.data }))
       } else if (msg.topic === 'SUPPORT_CHAT_UPDATED') {
         toast.info('Chat CS baru', `Pesan dari ${msg.data.phone}`)
         window.dispatchEvent(new CustomEvent('support-chat-updated', { detail: msg.data }))

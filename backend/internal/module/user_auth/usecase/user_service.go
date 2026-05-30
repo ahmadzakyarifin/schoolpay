@@ -593,30 +593,55 @@ func (s *userService) notificationWorker() {
 			fullUser.Name, childInfo, link,
 		)
 
-		if job.channel == "email" || job.channel == "" {
+		if (job.channel == "email" || job.channel == "") && fullUser.Email != "" {
+			status := "sent"
+			var deliveryErr *string
 			if err := s.messenger.SendEmail(fullUser.Email, "Akses Akun SchoolPay", message); err != nil {
+				status = "failed"
+				deliveryErr = utils.StringPtr(err.Error())
 				fmt.Printf("[WORKER] Gagal mengirim Email ke %s: %v\n", fullUser.Email, err)
 			} else {
 				fmt.Printf("[WORKER] Berhasil mengirim Email ke %s\n", fullUser.Email)
 			}
+
+			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
+				UserID:         fullUser.ID,
+				Title:          "Akses Akun SchoolPay",
+				Message:        message,
+				Type:           "auth",
+				DeliveryStatus: status,
+				DeliveryError:  deliveryErr,
+			})
 		}
 
-		if job.channel == "whatsapp" || job.channel == "" {
-			if _, err := s.messenger.SendWhatsApp(fullUser.PhoneNumber, message); err != nil {
+		if (job.channel == "whatsapp" || job.channel == "") && fullUser.PhoneNumber != "" {
+			status := "sent"
+			var deliveryErr *string
+			var whatsappID *string
+			if waID, err := s.messenger.SendWhatsApp(fullUser.PhoneNumber, message); err != nil {
+				status = "failed"
+				deliveryErr = utils.StringPtr(err.Error())
 				fmt.Printf("[WORKER] Gagal mengirim WA ke %s: %v\n", fullUser.PhoneNumber, err)
 			} else {
+				if waID != "" {
+					whatsappID = utils.StringPtr(waID)
+				}
 				fmt.Printf("[WORKER] Berhasil mengirim WA ke %s\n", fullUser.PhoneNumber)
 			}
-		}
+			if whatsappID == nil {
+				whatsappID = utils.StringPtr(fmt.Sprintf("local-wa-%d-%d", fullUser.ID, time.Now().UnixNano()))
+			}
 
-		// Log to notification history
-		_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
-			UserID:         fullUser.ID,
-			Title:          "Akses Akun",
-			Message:        message,
-			Type:           "auth",
-			DeliveryStatus: "sent",
-		})
+			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
+				UserID:         fullUser.ID,
+				Title:          "Akses Akun SchoolPay",
+				Message:        message,
+				Type:           "auth",
+				WhatsappID:     whatsappID,
+				DeliveryStatus: status,
+				DeliveryError:  deliveryErr,
+			})
+		}
 	}
 }
 func (s *userService) GetDependencyInfo(ctx context.Context, id uint) (map[string]interface{}, error) {

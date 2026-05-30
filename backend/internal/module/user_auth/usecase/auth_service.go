@@ -35,6 +35,7 @@ type authService struct {
 }
 
 type AuthEmailJob struct {
+	UserID  uint   `json:"user_id"`
 	Email   string `json:"email"`
 	Name    string `json:"name"`
 	Subject string `json:"subject"`
@@ -211,6 +212,7 @@ func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPassword
 	}
 
 	job := AuthEmailJob{
+		UserID:  user.ID,
 		Email:   user.Email,
 		Name:    user.Name,
 		Subject: "Reset Password - SchoolPay",

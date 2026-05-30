@@ -32,6 +32,28 @@ const formatCurrency = (val) => {
   }).format(val)
 }
 
+const monthNames = {
+  '01': 'Januari',
+  '02': 'Februari',
+  '03': 'Maret',
+  '04': 'April',
+  '05': 'Mei',
+  '06': 'Juni',
+  '07': 'Juli',
+  '08': 'Agustus',
+  '09': 'September',
+  '10': 'Oktober',
+  '11': 'November',
+  '12': 'Desember'
+}
+
+const formatPeriod = (period) => {
+  if (!period) return 'Sekali Bayar'
+  const match = String(period).match(/^(\d{4})-(\d{2})$/)
+  if (!match) return period
+  return `${monthNames[match[2]] || match[2]} ${match[1]}`
+}
+
 const printWindow = () => {
   window.print()
 }
@@ -109,7 +131,7 @@ onMounted(() => {
           <div v-for="(item, idx) in receipt.items" :key="idx" class="flex justify-between gap-4">
             <div class="flex flex-col flex-1">
               <span class="text-[11px] font-black text-slate-800 uppercase tracking-tight">{{ item.bill_name }}</span>
-              <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Periode: {{ item.period || 'Sekali Bayar' }}</span>
+              <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Periode: {{ formatPeriod(item.period) }}</span>
             </div>
             <span class="text-[11px] font-black text-slate-800 whitespace-nowrap">{{ formatCurrency(item.amount) }}</span>
           </div>

@@ -196,17 +196,43 @@ const downloadReport = async (format, type) => {
 
 const displayBillTypes = (value) => {
   if (!value) return 'Pembayaran Deposit / Kustom'
-  if (typeof value === 'string') return value || 'Pembayaran Deposit / Kustom'
+  if (typeof value === 'string') return value.split('||').filter(Boolean).join(', ') || 'Pembayaran Deposit / Kustom'
   if (value.String !== undefined) return value.Valid === false ? 'Pembayaran Deposit / Kustom' : value.String
   if (Array.isArray(value)) return value.join(', ')
   return String(value)
 }
 
-
 const billTypeItems = (value) => {
   const text = displayBillTypes(value)
   if (!text || text === 'Pembayaran Deposit / Kustom') return [text]
-  return text.split(',').map(item => item.trim()).filter(Boolean)
+  return text.split(/\|\||,/).map(item => item.trim()).filter(Boolean)
+}
+
+const paymentDetailItems = (payment) => {
+  const rawDetails = payment?.bill_type_details
+  if (typeof rawDetails === 'string' && rawDetails.trim()) {
+    return rawDetails.split('||').map((item) => {
+      const [name, period, amount] = item.split('::')
+      return {
+        name: name || 'Pembayaran Deposit / Kustom',
+        period: period || '',
+        amount: Number(String(amount || '0').replace(/[^0-9.-]/g, '')) || 0
+      }
+    }).filter(item => item.name)
+  }
+
+  return billTypeItems(payment?.bill_type_names).map(name => ({ name, period: '', amount: 0 }))
+}
+
+const paymentItemCount = (payment) => {
+  return Number(payment?.bill_item_count || paymentDetailItems(payment).length || 0)
+}
+
+const paymentSummaryTitle = (payment) => {
+  const items = paymentDetailItems(payment)
+  if (items.length === 0) return 'Pembayaran Deposit / Kustom'
+  if (items.length === 1) return items[0].name
+  return `${items[0].name} + ${items.length - 1} tagihan`
 }
 
 const openPaymentTypeModal = (item) => {
@@ -225,6 +251,55 @@ const formatDate = (dateStr) => {
   const d = new Date(dateStr)
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
+
+const formatDateTime = (dateStr) => {
+  if (!dateStr || String(dateStr).startsWith('0001-01-01')) return '-'
+  const d = new Date(dateStr)
+  return d.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatPaymentMethod = (method) => {
+  if (!method) return '-'
+  return String(method).replace(/_/g, ' ').toUpperCase()
+}
+
+const currentPageArrearsTotal = computed(() => {
+  return previewData.value.reduce((acc, item) => acc + Math.max(0, Number(item.amount || 0) - Number(item.total_paid || 0)), 0)
+})
+
+const summaryCards = computed(() => {
+  if (activeTab.value === 'arrears') {
+    return [
+      { label: 'Data Tunggakan', value: totalData.value, helper: 'tagihan sesuai filter' },
+      { label: 'Sisa Tagihan Halaman Ini', value: formatCurrency(currentPageArrearsTotal.value), helper: `${previewData.value.length} item ditampilkan` },
+      { label: 'Perlu Ditindaklanjuti', value: previewData.value.filter(item => getRemainingDaysText(item.due_date).startsWith('Telat')).length, helper: 'item terlambat di halaman ini' }
+    ]
+  }
+
+  return [
+    {
+      label: 'Total Pembayaran',
+      value: formatCurrency(summary.value?.payments?.total || summary.value?.paid_amount || 0),
+      helper: `${summary.value?.paid_count || 0} transaksi berhasil`
+    },
+    {
+      label: 'Sisa Tunggakan',
+      value: formatCurrency(summary.value?.unpaid_amount || 0),
+      helper: `${summary.value?.unpaid_count || 0} tagihan belum lunas`
+    },
+    {
+      label: 'Ditampilkan',
+      value: totalData.value,
+      helper: 'transaksi sesuai filter'
+    }
+  ]
+})
 
 const getRemainingDaysText = (dateStr) => {
   if (!dateStr || String(dateStr).startsWith('0001-01-01')) return ''
@@ -350,6 +425,14 @@ onMounted(() => {
       </button>
     </div>
 
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div v-for="card in summaryCards" :key="card.label" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+        <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.22em]">{{ card.label }}</p>
+        <p class="mt-2 text-xl font-black text-slate-800">{{ card.value }}</p>
+        <p class="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{{ card.helper }}</p>
+      </div>
+    </div>
+
     <!-- 3. Dynamic Tables -->
     <div class="white-card p-0 flex flex-col min-h-[600px]">
       <div class="p-8 border-b border-slate-50 flex items-center justify-between">
@@ -377,37 +460,58 @@ onMounted(() => {
           <template v-if="activeTab === 'payments'">
             <thead>
               <tr class="bg-slate-50/50 border-b border-slate-50">
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Siswa</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Jenis Tagihan</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Nominal</th>
+                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaksi</th>
+                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Rincian Tagihan</th>
+                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Nominal</th>
                 <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Metode</th>
                 <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Tanggal</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
               <tr v-for="item in previewData" :key="item.id" class="hover:bg-slate-50/50 transition-colors group">
-                <td class="px-10 py-4">
+                <td class="px-8 py-5">
                   <div class="flex items-center gap-4">
-                    <div class="w-9 h-9 bg-slate-100 text-indigo-600 rounded-xl flex items-center justify-center font-black text-[10px]">
+                    <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-black text-[10px] border border-indigo-100">
                       {{ item.student_name?.[0] }}
                     </div>
-                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{{ item.student_name }}</p>
+                    <div class="min-w-0">
+                      <p class="text-xs font-black text-slate-700 uppercase tracking-wider truncate">{{ item.student_name }}</p>
+                      <p class="mt-1 text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                        {{ item.class_name || 'Tanpa kelas' }} <span v-if="item.transaction_ref">• {{ item.transaction_ref }}</span>
+                      </p>
+                    </div>
                   </div>
                 </td>
-                <td class="px-10 py-4 text-center max-w-[240px]">
-                  <button @click="openPaymentTypeModal(item)" class="max-w-[220px] truncate text-[10px] font-black text-slate-700 uppercase tracking-wider hover:text-indigo-600 hover:underline underline-offset-4 transition-colors" :title="displayBillTypes(item.bill_type_names)">
-                    {{ displayBillTypes(item.bill_type_names) }}
+                <td class="px-8 py-5 max-w-[360px]">
+                  <button @click="openPaymentTypeModal(item)" class="w-full text-left group/detail" :title="displayBillTypes(item.bill_type_names)">
+                    <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate group-hover/detail:text-indigo-600">
+                      {{ paymentSummaryTitle(item) }}
+                    </p>
+                    <div class="mt-2 flex flex-wrap gap-1.5">
+                      <span v-for="detail in paymentDetailItems(item).slice(0, 2)" :key="detail.name + detail.period" class="max-w-[160px] truncate px-2 py-1 rounded-lg bg-slate-100 text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                        {{ detail.name }}
+                      </span>
+                      <span v-if="paymentItemCount(item) > 2" class="px-2 py-1 rounded-lg bg-indigo-50 text-[8px] font-black text-indigo-600 uppercase tracking-wider">
+                        +{{ paymentItemCount(item) - 2 }}
+                      </span>
+                    </div>
                   </button>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="px-8 py-5 text-center">
                   <span class="text-[10px] font-black text-slate-700">{{ formatCurrency(item.amount) }}</span>
                   <p v-if="Number(item.deposit_applied || 0) > 0" class="text-[8px] font-bold text-slate-400 uppercase mt-1">Saldo {{ formatCurrency(item.deposit_applied) }} • Tunai/Gateway {{ formatCurrency(item.cash_or_gateway_amount) }}</p>
                 </td>
                 <td class="px-10 py-4 text-center">
-                  <span class="px-3 py-1 bg-white border border-slate-100 rounded-full text-[8px] font-black text-slate-500 uppercase">{{ item.method }}</span>
+                  <span class="px-3 py-1 bg-white border border-slate-100 rounded-full text-[8px] font-black text-slate-500 uppercase">{{ formatPaymentMethod(item.method) }}</span>
                 </td>
                 <td class="px-10 py-4 text-right">
-                  <p class="text-[10px] font-bold text-slate-400 uppercase">{{ formatDate(item.created_at) }}</p>
+                  <p class="text-[10px] font-bold text-slate-400 uppercase">{{ formatDateTime(item.created_at) }}</p>
+                </td>
+              </tr>
+              <tr v-if="!previewLoading && previewData.length === 0">
+                <td colspan="5" class="px-10 py-20 text-center">
+                  <ClockIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Belum ada data pembayaran sesuai filter</p>
                 </td>
               </tr>
             </tbody>
@@ -544,7 +648,7 @@ onMounted(() => {
             <div class="p-7 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h3 class="text-lg font-black text-slate-800 tracking-tight">Detail Jenis Pembayaran</h3>
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ selectedPayment.student_name }} • {{ formatDate(selectedPayment.created_at) }}</p>
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{{ selectedPayment.student_name }} • {{ formatDateTime(selectedPayment.created_at) }}</p>
               </div>
               <button @click="showPaymentTypeModal = false" class="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center transition-all">
                 <XIcon class="w-5 h-5" />
@@ -562,18 +666,22 @@ onMounted(() => {
                 </div>
                 <div class="rounded-2xl bg-slate-50 border border-slate-100 p-4">
                   <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Metode</p>
-                  <p class="mt-1 text-sm font-black text-slate-800 uppercase">{{ selectedPayment.method }}</p>
+                  <p class="mt-1 text-sm font-black text-slate-800 uppercase">{{ formatPaymentMethod(selectedPayment.method) }}</p>
                 </div>
               </div>
 
               <div class="rounded-2xl border border-slate-100 overflow-hidden">
                 <div class="px-4 py-3 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">Daftar Tagihan Terbayar</div>
                 <div class="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-                  <div v-for="(name, idx) in billTypeItems(selectedPayment.bill_type_names)" :key="idx" class="px-4 py-3 flex items-center justify-between gap-4">
+                  <div v-for="(detail, idx) in paymentDetailItems(selectedPayment)" :key="idx" class="px-4 py-3 flex items-center justify-between gap-4">
                     <div class="flex items-center gap-3 min-w-0">
                       <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black">{{ idx + 1 }}</div>
-                      <p class="text-xs font-black text-slate-700 uppercase tracking-wider truncate">{{ name }}</p>
+                      <div class="min-w-0">
+                        <p class="text-xs font-black text-slate-700 uppercase tracking-wider truncate">{{ detail.name }}</p>
+                        <p v-if="detail.period" class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Periode {{ detail.period }}</p>
+                      </div>
                     </div>
+                    <span v-if="detail.amount > 0" class="text-[10px] font-black text-slate-600 shrink-0">{{ formatCurrency(detail.amount) }}</span>
                   </div>
                 </div>
               </div>

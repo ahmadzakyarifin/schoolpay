@@ -60,6 +60,27 @@ func (h *WhatsAppHandler) Logout(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "WhatsApp berhasil logout", nil)
 }
 
+func (h *WhatsAppHandler) Restart(c *gin.Context) {
+	if err := h.s.StopSession(); err != nil {
+		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.s.StartSession(); err != nil {
+		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		return
+	}
+	go h.s.RegisterWebhook()
+
+	if h.audit != nil {
+		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "RESTART_WHATSAPP_SESSION", "whatsapp", 0, nil, map[string]interface{}{"status": "restarting"}, ipAddress, userAgent)
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "WhatsApp session sedang direstart", gin.H{
+		"status": "STARTING",
+	})
+}
+
 func (h *WhatsAppHandler) GetStats(c *gin.Context) {
 	stats, err := h.noti.GetStats(c.Request.Context())
 	if err != nil {

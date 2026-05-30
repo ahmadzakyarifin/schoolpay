@@ -58,7 +58,7 @@ func (r *paymentRepo) FindDetailsByPaymentID(ctx context.Context, paymentID uint
 	err := r.db.NewSelect().
 		Model(&list).
 		ColumnExpr("pd.*").
-		ColumnExpr("bt.name as bill_type_name, COALESCE(sb.period, '') as period").
+		ColumnExpr("COALESCE(NULLIF(sb.name, ''), bt.name) as bill_type_name, COALESCE(sb.period, '') as period").
 		Join("JOIN student_bills sb ON pd.student_bill_id = sb.id").
 		Join("JOIN bill_types bt ON sb.bill_type_id = bt.id").
 		Where("pd.payment_id = ?", paymentID).
@@ -73,6 +73,16 @@ func (r *paymentRepo) FindByStudent(ctx context.Context, studentID uint) ([]doma
 		Where("student_id = ? AND status = 'success'", studentID).
 		Order("paid_at DESC").
 		Scan(ctx)
+	if err != nil {
+		return list, err
+	}
+	for i := range list {
+		details, detailErr := r.FindDetailsByPaymentID(ctx, list[i].ID)
+		if detailErr != nil {
+			return list, detailErr
+		}
+		list[i].Details = details
+	}
 	return list, err
 }
 

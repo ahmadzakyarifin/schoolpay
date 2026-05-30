@@ -26,7 +26,7 @@ func StartAsynqWorker(srv *asynq.Server, db *bun.DB, stuRepo academicrepo.Studen
 
 	// Register handlers
 	mux.HandleFunc(notificationusecase.TaskFinanceNotification, HandleFinanceNotificationTask(db, stuRepo, userRepo, notiRepo, msg, audit))
-	mux.HandleFunc(authusecase.TaskAuthEmail, HandleAuthEmailTask(msg))
+	mux.HandleFunc(authusecase.TaskAuthEmail, HandleAuthEmailTask(db, notiRepo, msg))
 
 	log.Println("[Asynq] Worker server starting...")
 	if err := srv.Run(mux); err != nil {
@@ -34,7 +34,7 @@ func StartAsynqWorker(srv *asynq.Server, db *bun.DB, stuRepo academicrepo.Studen
 	}
 }
 
-func HandleAuthEmailTask(msg utils.Messenger) asynq.HandlerFunc {
+func HandleAuthEmailTask(db *bun.DB, notiRepo notificationrepo.NotificationRepo, msg utils.Messenger) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var job authusecase.AuthEmailJob
 		if err := json.Unmarshal(t.Payload(), &job); err != nil {
@@ -42,6 +42,22 @@ func HandleAuthEmailTask(msg utils.Messenger) asynq.HandlerFunc {
 		}
 
 		err := msg.SendEmail(job.Email, job.Subject, job.Body)
+		status := "sent"
+		var deliveryErr *string
+		if err != nil {
+			status = "failed"
+			deliveryErr = utils.StringPtr(err.Error())
+		}
+		if job.UserID > 0 {
+			_ = notiRepo.Create(ctx, db, &notificationdomain.Notification{
+				UserID:         job.UserID,
+				Title:          job.Subject,
+				Message:        job.Body,
+				Type:           "auth",
+				DeliveryStatus: status,
+				DeliveryError:  deliveryErr,
+			})
+		}
 		if err != nil {
 			return fmt.Errorf("SendEmail failed: %v", err)
 		}
@@ -171,6 +187,9 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 					status = "failed"
 					deliveryErr = utils.StringPtr(waErr.Error())
 				}
+				if waID == "" {
+					waID = fmt.Sprintf("local-wa-%d-%d", parent.ID, time.Now().UnixNano())
+				}
 
 				notiObj := &notificationdomain.Notification{
 					UserID:         parent.ID,
@@ -180,9 +199,7 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 					DeliveryError:  deliveryErr,
 					Type:           "finance",
 				}
-				if waID != "" {
-					notiObj.WhatsappID = &waID
-				}
+				notiObj.WhatsappID = &waID
 				_ = notiRepo.Create(ctx, db, notiObj)
 
 				if audit != nil {

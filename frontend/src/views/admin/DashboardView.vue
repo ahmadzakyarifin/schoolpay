@@ -58,8 +58,8 @@ const demographics = ref({
   gender: {},
   major: {},
   class: {},
-  whatsapp: { sent: 0, read: 0, failed: 0 },
-  email: { success: 0, failed: 0 }
+  whatsapp: { pending: 0, sent: 0, delivered: 0, read: 0, failed: 0 },
+  email: { pending: 0, sent: 0, delivered: 0, read: 0, failed: 0 }
 })
 
 const recentPayments = ref([])
@@ -164,7 +164,7 @@ const applyFilters = () => {
 
 const fetchCommunicationDetails = async (status, channel = 'whatsapp') => {
   drillDownLoading.value = true
-  drillDownTitle.value = `Daftar Pengiriman: ${status.toUpperCase()} (${channel.toUpperCase()})`
+  drillDownTitle.value = `${channelLabel(channel)} - ${statusLabel(status)}`
   showDrillDown.value = true
   try {
     const res = await axios.get('dashboard/communication-details', { 
@@ -175,6 +175,7 @@ const fetchCommunicationDetails = async (status, channel = 'whatsapp') => {
         academic_year_id: filters.academic_year_id,
         class_id: filters.class_id,
         major_id: filters.major_id,
+        ref_date: filters.ref_date,
         start_date: filters.start_date,
         end_date: filters.end_date
       } 
@@ -225,6 +226,17 @@ const formatDate = (dateStr) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
+const formatDateTime = (dateStr) => {
+  if (!dateStr || String(dateStr).startsWith('0001-01-01')) return '-'
+  return new Date(dateStr).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 const getRemainingDaysText = (dateStr) => {
   if (!dateStr || String(dateStr).startsWith('0001-01-01')) return ''
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/)
@@ -253,6 +265,83 @@ const getRemainingDaysText = (dateStr) => {
 const getPercentage = (val, total) => {
   if (!total) return '0%'
   return ((val / total) * 100).toFixed(1) + '%'
+}
+
+const communicationStatuses = [
+  { key: 'pending', label: 'Menunggu', icon: ClockIcon, note: 'Masuk antrean, belum ada hasil kirim' },
+  { key: 'sent', label: 'Terkirim', icon: SendIcon, note: 'Berhasil dikirim dari sistem' },
+  { key: 'delivered', label: 'Diterima', icon: CheckIcon, note: 'Diterima perangkat tujuan' },
+  { key: 'read', label: 'Dibaca', icon: ReadIcon, note: 'Sudah dibuka/dibaca penerima' },
+  { key: 'failed', label: 'Gagal', icon: ErrorIcon, note: 'Gagal dikirim, lihat alasan error' }
+]
+
+const channelLabel = (channel) => channel === 'email' ? 'Email' : 'WhatsApp'
+
+const statusLabel = (status) => {
+  return communicationStatuses.find(s => s.key === String(status).toLowerCase())?.label || status
+}
+
+const normalizedChannelStats = (channel) => {
+  const raw = demographics.value?.[channel] || {}
+  return communicationStatuses.reduce((acc, status) => {
+    acc[status.key] = Number(raw[status.key] || (status.key === 'sent' ? raw.success : 0) || 0)
+    return acc
+  }, {})
+}
+
+const communicationTotal = (channel) => {
+  const data = normalizedChannelStats(channel)
+  return communicationStatuses.reduce((acc, status) => acc + Number(data[status.key] || 0), 0)
+}
+
+const communicationRows = (channel) => {
+  const data = normalizedChannelStats(channel)
+  const total = communicationTotal(channel)
+  return communicationStatuses.map(status => ({
+    ...status,
+    count: Number(data[status.key] || 0),
+    percent: getPercentage(Number(data[status.key] || 0), total)
+  }))
+}
+
+const communicationTables = computed(() => [
+  {
+    channel: 'whatsapp',
+    title: 'Efikasi WhatsApp',
+    icon: WAIcon,
+    accent: 'emerald',
+    total: communicationTotal('whatsapp'),
+    rows: communicationRows('whatsapp')
+  },
+  {
+    channel: 'email',
+    title: 'Efikasi Email',
+    icon: MailIcon,
+    accent: 'sky',
+    total: communicationTotal('email'),
+    rows: communicationRows('email')
+  }
+])
+
+const statusBadgeClass = (status) => {
+  switch (String(status).toLowerCase()) {
+    case 'read':
+      return 'bg-emerald-50 text-emerald-600 border-emerald-100'
+    case 'delivered':
+      return 'bg-sky-50 text-sky-600 border-sky-100'
+    case 'failed':
+      return 'bg-rose-50 text-rose-600 border-rose-100'
+    case 'pending':
+      return 'bg-amber-50 text-amber-600 border-amber-100'
+    default:
+      return 'bg-slate-50 text-slate-600 border-slate-200'
+  }
+}
+
+const channelBadgeClass = (channel) => {
+  return channel === 'email'
+    ? 'bg-sky-50 text-sky-600 border-sky-100'
+    : 'bg-emerald-50 text-emerald-600 border-emerald-100'
 }
 
 // Chart Options
@@ -362,10 +451,12 @@ onMounted(async () => {
   isMounted.value = true
   await Promise.all([fetchYears(), fetchClassesMajors(), fetchStats()])
   window.addEventListener('new-payment', fetchStats)
+  window.addEventListener('notification-status-changed', fetchStats)
 })
 
 onUnmounted(() => {
   window.removeEventListener('new-payment', fetchStats)
+  window.removeEventListener('notification-status-changed', fetchStats)
 })
 </script>
 
@@ -651,38 +742,81 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- 8. Communication Efficacy (Nested Sub-Containers) -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
-      <!-- WA Efficacy -->
-      <div class="white-card p-8">
-        <div class="flex items-center justify-between mb-6">
-           <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Efikasi WhatsApp</h3>
-           <WAIcon class="w-5 h-5 text-emerald-500" />
+    <!-- 8. Communication Efficacy -->
+    <div class="space-y-6 mt-10">
+      <div v-for="table in communicationTables" :key="table.channel" class="white-card p-0 overflow-hidden">
+        <div class="p-8 border-b border-slate-50 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div :class="[
+              table.channel === 'whatsapp' ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600',
+              'w-11 h-11 rounded-2xl flex items-center justify-center'
+            ]">
+              <component :is="table.icon" class="w-5 h-5" />
+            </div>
+            <div>
+              <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">{{ table.title }}</h3>
+              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                Alur status pengiriman notifikasi - total {{ table.total }} data
+              </p>
+            </div>
+          </div>
+          <span :class="[channelBadgeClass(table.channel), 'px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-widest']">
+            {{ channelLabel(table.channel) }}
+          </span>
         </div>
-        <div class="grid grid-cols-3 gap-4">
-           <div v-for="s in ['sent', 'read', 'failed']" :key="s" @click="fetchCommunicationDetails(s)" 
-                :class="[s === 'failed' ? 'bg-rose-50 hover:bg-rose-100 text-rose-600' : 'bg-slate-50 hover:bg-slate-100 text-slate-600']"
-                class="p-5 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center text-center group">
-              <p class="text-[9px] font-black uppercase opacity-60 group-hover:opacity-100">{{ s }}</p>
-              <h4 class="text-xl font-black mt-1">{{ demographics.whatsapp?.[s] || 0 }}</h4>
-           </div>
-        </div>
-      </div>
-      <!-- Email Efficacy -->
-      <div class="white-card p-8">
-        <div class="flex items-center justify-between mb-6">
-           <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Efikasi Email</h3>
-           <MailIcon class="w-5 h-5 text-indigo-500" />
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-           <div @click="fetchCommunicationDetails('sent', 'email')" class="bg-slate-50 hover:bg-slate-100 p-5 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center text-center group">
-              <p class="text-[9px] font-black uppercase opacity-60 group-hover:opacity-100">Sent</p>
-              <h4 class="text-xl font-black text-slate-600 mt-1">{{ demographics.email?.sent || demographics.email?.success || 0 }}</h4>
-           </div>
-           <div @click="fetchCommunicationDetails('failed', 'email')" class="bg-rose-50 hover:bg-rose-100 p-5 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center text-center group">
-              <p class="text-[9px] font-black uppercase opacity-60 group-hover:opacity-100">Failed</p>
-              <h4 class="text-xl font-black text-rose-600 mt-1">{{ demographics.email?.failed || 0 }}</h4>
-           </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="bg-slate-50/60 border-b border-slate-100">
+                <th class="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Alur</th>
+                <th class="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Keterangan</th>
+                <th class="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Jumlah</th>
+                <th class="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Persentase</th>
+                <th class="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Detail</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50">
+              <tr v-for="row in table.rows" :key="table.channel + row.key" class="hover:bg-slate-50/70 transition-all">
+                <td class="px-8 py-5">
+                  <div class="flex items-center gap-3">
+                    <div :class="[statusBadgeClass(row.key), 'w-9 h-9 rounded-xl border flex items-center justify-center']">
+                      <component :is="row.icon" class="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p class="text-xs font-black text-slate-700 uppercase tracking-wider">{{ row.label }}</p>
+                      <p class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{{ row.key }}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  {{ row.note }}
+                </td>
+                <td class="px-8 py-5 text-center">
+                  <span class="text-sm font-black text-slate-800">{{ row.count }}</span>
+                </td>
+                <td class="px-8 py-5 text-center">
+                  <div class="flex items-center justify-center gap-3">
+                    <div class="w-28 h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        class="h-full rounded-full bg-indigo-500"
+                        :style="{ width: row.percent }"
+                      ></div>
+                    </div>
+                    <span class="w-12 text-right text-[10px] font-black text-slate-500">{{ row.percent }}</span>
+                  </div>
+                </td>
+                <td class="px-8 py-5 text-right">
+                  <button
+                    @click="fetchCommunicationDetails(row.key, table.channel)"
+                    class="px-4 py-2 bg-white border border-slate-200 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl text-[9px] font-black text-slate-500 uppercase tracking-widest transition-all"
+                  >
+                    Lihat Pesan
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -730,34 +864,56 @@ onUnmounted(() => {
     <!-- Drill-down Modal -->
     <Teleport to="body">
       <div v-if="showDrillDown" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
-         <div class="bg-white w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-scale-up">
+         <div class="bg-white w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl animate-scale-up">
             <div class="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-               <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">{{ drillDownTitle }}</h3>
+               <div>
+                 <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">{{ drillDownTitle }}</h3>
+                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Detail pesan, penerima, status, dan alasan gagal bila ada</p>
+               </div>
                <button @click="showDrillDown = false" class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 hover:text-rose-500 shadow-sm transition-all">
                   <ErrorIcon class="w-4 h-4" />
                </button>
             </div>
             <div class="max-h-[500px] overflow-y-auto p-4 custom-scrollbar">
                <div v-if="drillDownLoading" class="p-20 text-center text-slate-400 font-black uppercase text-[10px]">Memuat data...</div>
+               <div v-else-if="drillDownData.length === 0" class="p-20 text-center">
+                 <SendIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Belum ada pesan dengan status ini</p>
+               </div>
                <table v-else class="w-full text-left">
                   <thead>
                     <tr class="text-[9px] font-black text-slate-400 uppercase border-b border-slate-50">
-                      <th class="px-4 py-3">Siswa / Ortu</th>
+                      <th class="px-4 py-3">Penerima</th>
+                      <th class="px-4 py-3">Kontak</th>
+                      <th class="px-4 py-3">Judul & Pesan</th>
                       <th class="px-4 py-3">Status</th>
                       <th class="px-4 py-3 text-right">Waktu</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-50">
                     <tr v-for="d in drillDownData" :key="d.id" class="hover:bg-slate-50/50 transition-all">
-                      <td class="px-4 py-4">
-                         <p class="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{{ d.student_name }}</p>
-                         <p class="text-[9px] font-bold text-slate-400 uppercase">{{ d.recipient_name }}</p>
+                      <td class="px-4 py-4 max-w-[180px]">
+                         <p class="text-xs font-bold text-slate-600 uppercase tracking-wider truncate">{{ d.student_name || 'Tanpa data siswa' }}</p>
+                         <p class="text-[9px] font-bold text-slate-400 uppercase truncate">{{ d.recipient_name || 'Penerima' }}</p>
+                      </td>
+                      <td class="px-4 py-4 max-w-[170px]">
+                         <span :class="[channelBadgeClass(d.channel), 'px-2 py-1 rounded text-[8px] font-black uppercase border']">{{ channelLabel(d.channel) }}</span>
+                         <p class="mt-2 text-[10px] font-mono font-bold text-slate-500 truncate">
+                           {{ d.channel === 'email' ? (d.recipient_email || '-') : (d.recipient_phone || '-') }}
+                         </p>
+                      </td>
+                      <td class="px-4 py-4 max-w-[420px]">
+                         <p class="text-[11px] font-black text-slate-700 uppercase tracking-wider truncate">{{ d.title }}</p>
+                         <p class="mt-1 text-[10px] font-medium text-slate-500 line-clamp-2">{{ d.message }}</p>
+                         <p v-if="d.delivery_error" class="mt-2 text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-2 py-1 line-clamp-2">
+                           {{ d.delivery_error }}
+                         </p>
                       </td>
                       <td class="px-4 py-4">
-                         <span :class="[d.delivery_status === 'failed' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600', 'px-2 py-1 rounded text-[8px] font-black uppercase']">{{ d.delivery_status }}</span>
+                         <span :class="[statusBadgeClass(d.delivery_status), 'px-2 py-1 rounded text-[8px] font-black uppercase border']">{{ statusLabel(d.delivery_status) }}</span>
                       </td>
                       <td class="px-4 py-4 text-right text-[9px] font-bold text-slate-400 uppercase">
-                         {{ formatDate(d.created_at) }}
+                         {{ formatDateTime(d.updated_at || d.created_at) }}
                       </td>
                     </tr>
                   </tbody>

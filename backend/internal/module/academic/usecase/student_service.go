@@ -11,6 +11,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	financerepo "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
+	notificationdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/domain"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
 	userauthdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
@@ -723,7 +724,28 @@ func (s *studentService) notificationWorker() {
 				passInfo = fmt.Sprintf("\n🔑 *Password Sementara:* %s\n", job.rawPassword)
 			}
 			msg := fmt.Sprintf("📢 *AKTIVASI AKUN SCHOOLPAY*\n\nHalo *%s*,\n\nAkun Anda telah didaftarkan untuk siswa *%s*. Silakan aktifkan akun melalui link berikut:\n🔗 %s\n%s\nTerima kasih.", job.user.Name, job.studentName, link, passInfo)
-			_, _ = s.msg.SendWhatsApp(job.user.PhoneNumber, msg)
+			status := "sent"
+			var deliveryErr *string
+			var whatsappID *string
+			if waID, err := s.msg.SendWhatsApp(job.user.PhoneNumber, msg); err != nil {
+				status = "failed"
+				deliveryErr = utils.StringPtr(err.Error())
+			} else if waID != "" {
+				whatsappID = utils.StringPtr(waID)
+			}
+			if whatsappID == nil {
+				whatsappID = utils.StringPtr(fmt.Sprintf("local-wa-%d-%d", job.user.ID, time.Now().UnixNano()))
+			}
+
+			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
+				UserID:         job.user.ID,
+				Title:          "Aktivasi Akun SchoolPay",
+				Message:        msg,
+				Type:           "auth",
+				WhatsappID:     whatsappID,
+				DeliveryStatus: status,
+				DeliveryError:  deliveryErr,
+			})
 		}
 	}
 }

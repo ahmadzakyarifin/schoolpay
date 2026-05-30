@@ -222,7 +222,7 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 
 func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 	ctx := c.Request.Context()
-	status := strings.ToUpper(c.Query("status"))
+	status := strings.TrimSpace(strings.ToLower(c.Query("status")))
 	channel := c.DefaultQuery("channel", "whatsapp")
 	period := c.DefaultQuery("period", "all")
 
@@ -284,10 +284,14 @@ func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 
 	q := h.db.NewSelect().
 		TableExpr("notifications AS n").
-		ColumnExpr("n.id, s.name as student_name, u.name as recipient_name, n.title, n.delivery_status, n.created_at").
+		ColumnExpr("n.id, s.name as student_name, u.name as recipient_name, u.phone_number as recipient_phone, u.email as recipient_email, n.title, n.message, n.delivery_status, n.delivery_error, n.created_at, n.updated_at").
+		ColumnExpr("CASE WHEN n.whatsapp_id IS NULL OR n.whatsapp_id = '' THEN 'email' ELSE 'whatsapp' END as channel").
 		Join("JOIN users u ON n.user_id = u.id").
-		Join("LEFT JOIN students s ON s.parent_id = u.id").
-		Where("UPPER(n.delivery_status) = ?", status)
+		Join("LEFT JOIN students s ON s.parent_id = u.id")
+
+	if status != "" && status != "all" {
+		q.Where("LOWER(n.delivery_status) = ?", status)
+	}
 
 	if period != "all" && !(period == "custom" && (startDateStr == "" || endDateStr == "")) {
 		q.Where("n.created_at >= ? AND n.created_at <= ?", start, end)
@@ -308,18 +312,24 @@ func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 	}
 
 	if channel == "whatsapp" {
-		q.Where("n.whatsapp_id IS NOT NULL")
+		q.Where("n.whatsapp_id IS NOT NULL AND n.whatsapp_id != ''")
 	} else {
-		q.Where("n.whatsapp_id IS NULL")
+		q.Where("n.whatsapp_id IS NULL OR n.whatsapp_id = ''")
 	}
 
 	type CommDetail struct {
 		ID             uint      `json:"id" bun:"id"`
 		StudentName    *string   `json:"student_name" bun:"student_name"`
 		RecipientName  string    `json:"recipient_name" bun:"recipient_name"`
+		RecipientPhone string    `json:"recipient_phone" bun:"recipient_phone"`
+		RecipientEmail string    `json:"recipient_email" bun:"recipient_email"`
+		Channel        string    `json:"channel" bun:"channel"`
 		Title          string    `json:"title" bun:"title"`
+		Message        string    `json:"message" bun:"message"`
 		DeliveryStatus string    `json:"delivery_status" bun:"delivery_status"`
+		DeliveryError  *string   `json:"delivery_error" bun:"delivery_error"`
 		CreatedAt      time.Time `json:"created_at" bun:"created_at"`
+		UpdatedAt      time.Time `json:"updated_at" bun:"updated_at"`
 	}
 
 	var list []CommDetail
@@ -525,6 +535,7 @@ func (h *DashboardHandler) ExportGlobalReport(c *gin.Context) {
 				if billTypes == "" {
 					billTypes = "Deposit/Kustom"
 				}
+				billTypes = strings.ReplaceAll(billTypes, "||", ", ")
 				method := ""
 				if v, ok := item["method"].(string); ok {
 					method = strings.ToUpper(v)
@@ -626,6 +637,7 @@ func (h *DashboardHandler) ExportGlobalReport(c *gin.Context) {
 			if billTypes == "" {
 				billTypes = "Deposit/Kustom"
 			}
+			billTypes = strings.ReplaceAll(billTypes, "||", ", ")
 			method := ""
 			if v, ok := item["method"].(string); ok {
 				method = strings.ToUpper(v)
