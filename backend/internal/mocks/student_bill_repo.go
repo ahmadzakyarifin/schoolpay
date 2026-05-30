@@ -298,6 +298,40 @@ func (_c *MockStudentBillRepo_FindAll_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
+// FindStudentSummaries provides a mock function with given fields: ctx, search, sort, status, page, limit
+func (_m *MockStudentBillRepo) FindStudentSummaries(ctx context.Context, search string, sort string, status string, page int, limit int) ([]domain.StudentBillSummary, int, error) {
+	ret := _m.Called(ctx, search, sort, status, page, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindStudentSummaries")
+	}
+
+	var r0 []domain.StudentBillSummary
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int, int) ([]domain.StudentBillSummary, int, error)); ok {
+		return rf(ctx, search, sort, status, page, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int, int) []domain.StudentBillSummary); ok {
+		r0 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.StudentBillSummary)
+		}
+	}
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, int, int) int); ok {
+		r1 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if rf, ok := ret.Get(2).(func(context.Context, string, string, string, int, int) error); ok {
+		r2 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
 // FindByID provides a mock function with given fields: ctx, id
 func (_m *MockStudentBillRepo) FindByID(ctx context.Context, id uint) (*domain.StudentBill, error) {
 	ret := _m.Called(ctx, id)

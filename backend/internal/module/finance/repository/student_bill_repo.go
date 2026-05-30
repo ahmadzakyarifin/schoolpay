@@ -14,6 +14,7 @@ type StudentBillRepo interface {
 	FindByStudent(ctx context.Context, studentID uint) ([]domain.StudentBill, error)
 	FindByParent(ctx context.Context, parentID uint) ([]domain.StudentBill, error)
 	FindAll(ctx context.Context, search, sort string) ([]domain.StudentBill, error)
+	FindStudentSummaries(ctx context.Context, search, sort, status string, page, limit int) ([]domain.StudentBillSummary, int, error)
 	FindByID(ctx context.Context, id uint) (*domain.StudentBill, error)
 	UpdateStatus(ctx context.Context, db bun.IDB, id uint, status string, totalPaid float64) error
 	Update(ctx context.Context, db bun.IDB, sb *domain.StudentBill) error
@@ -88,8 +89,8 @@ func (r *studentBillRepo) FindByParent(ctx context.Context, parentID uint) ([]do
 		Join("JOIN students s ON sb.student_id = s.id").
 		Join("JOIN bill_types bt ON sb.bill_type_id = bt.id").
 		Join("LEFT JOIN billing_rules br ON sb.billing_rule_id = br.id").
-		Join("JOIN parent_students ps ON s.id = ps.student_id").
-		Where("ps.parent_id = ?", parentID).
+		Where("s.parent_id = ?", parentID).
+		Where("s.deleted_at IS NULL").
 		Where("sb.status != ?", "voided").
 		Order("sb.due_date ASC").
 		Scan(ctx)
@@ -109,7 +110,7 @@ func (r *studentBillRepo) FindAll(ctx context.Context, search, sort string) ([]d
 
 	if search != "" {
 		s := "%" + search + "%"
-		q.Where("s.name LIKE ? OR s.nis LIKE ? OR s.nisn LIKE ?", s, s, s)
+		q.Where("(s.name LIKE ? OR s.nis LIKE ? OR s.nisn LIKE ?)", s, s, s)
 	}
 
 	switch sort {
@@ -125,6 +126,97 @@ func (r *studentBillRepo) FindAll(ctx context.Context, search, sort string) ([]d
 
 	err := q.Scan(ctx)
 	return list, err
+}
+
+func (r *studentBillRepo) FindStudentSummaries(ctx context.Context, search, sort, status string, page, limit int) ([]domain.StudentBillSummary, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	applyBase := func(q *bun.SelectQuery) *bun.SelectQuery {
+		q = q.
+			Join("JOIN students s ON sb.student_id = s.id").
+			Where("sb.status != ?", "voided").
+			Where("s.deleted_at IS NULL")
+		if search != "" {
+			s := "%" + search + "%"
+			q = q.Where("(s.name LIKE ? OR s.nis LIKE ? OR s.nisn LIKE ?)", s, s, s)
+		}
+		q = q.Group("sb.student_id", "s.name", "s.deposit_balance")
+		switch status {
+		case "paid":
+			q = q.Having("SUM(CASE WHEN sb.status != 'paid' THEN 1 ELSE 0 END) = 0")
+		case "partial":
+			q = q.Having("SUM(CASE WHEN sb.status = 'partial' THEN 1 ELSE 0 END) > 0")
+		case "overdue":
+			q = q.Having("SUM(CASE WHEN sb.status != 'paid' AND DATE(sb.due_date) < CURDATE() THEN 1 ELSE 0 END) > 0")
+		case "unpaid":
+			q = q.Having("SUM(CASE WHEN sb.status != 'paid' THEN 1 ELSE 0 END) > 0")
+		}
+		return q
+	}
+
+	var list []domain.StudentBillSummary
+	q := r.db.NewSelect().
+		Model((*domain.StudentBill)(nil)).
+		ColumnExpr("MIN(sb.id) AS id").
+		ColumnExpr("sb.student_id AS student_id").
+		ColumnExpr("s.name AS student_name").
+		ColumnExpr("COALESCE(SUM(sb.amount), 0) AS amount").
+		ColumnExpr("COALESCE(SUM(sb.total_paid), 0) AS total_paid").
+		ColumnExpr("COALESCE(SUM(sb.amount - sb.total_paid), 0) AS outstanding").
+		ColumnExpr("COUNT(sb.id) AS bill_count").
+		ColumnExpr("SUM(CASE WHEN sb.status = 'paid' THEN 1 ELSE 0 END) AS paid_count").
+		ColumnExpr("SUM(CASE WHEN sb.status = 'partial' THEN 1 ELSE 0 END) AS partial_count").
+		ColumnExpr("SUM(CASE WHEN sb.status != 'paid' AND DATE(sb.due_date) < CURDATE() THEN 1 ELSE 0 END) AS overdue_count").
+		ColumnExpr("SUM(CASE WHEN sb.status != 'paid' THEN 1 ELSE 0 END) AS unpaid_count").
+		ColumnExpr("s.deposit_balance AS deposit_balance").
+		ColumnExpr(`CASE
+			WHEN SUM(CASE WHEN sb.status != 'paid' THEN 1 ELSE 0 END) = 0 THEN 'paid'
+			WHEN SUM(CASE WHEN sb.status != 'paid' AND DATE(sb.due_date) < CURDATE() THEN 1 ELSE 0 END) > 0 THEN 'overdue'
+			WHEN SUM(CASE WHEN sb.status = 'partial' THEN 1 ELSE 0 END) > 0 THEN 'partial'
+			ELSE 'unpaid'
+		END AS status`).
+		ColumnExpr("MIN(CASE WHEN sb.status != 'paid' THEN sb.due_date ELSE NULL END) AS nearest_due_date").
+		ColumnExpr("MAX(sb.created_at) AS last_bill_at")
+	q = applyBase(q)
+
+	switch sort {
+	case "name_asc":
+		q.Order("s.name ASC")
+	case "name_desc":
+		q.Order("s.name DESC")
+	case "amount_desc":
+		q.Order("outstanding DESC")
+	case "amount_asc":
+		q.Order("outstanding ASC")
+	case "due_asc":
+		q.Order("nearest_due_date ASC")
+	default:
+		q.Order("last_bill_at DESC")
+	}
+
+	if err := q.Limit(limit).Offset((page - 1) * limit).Scan(ctx, &list); err != nil {
+		return nil, 0, err
+	}
+
+	var countRows []struct {
+		StudentID uint `bun:"student_id"`
+	}
+	countQ := r.db.NewSelect().
+		Model((*domain.StudentBill)(nil)).
+		ColumnExpr("sb.student_id")
+	countQ = applyBase(countQ)
+	if err := countQ.Scan(ctx, &countRows); err != nil {
+		return nil, 0, err
+	}
+	return list, len(countRows), nil
 }
 
 func (r *studentBillRepo) FindByID(ctx context.Context, id uint) (*domain.StudentBill, error) {

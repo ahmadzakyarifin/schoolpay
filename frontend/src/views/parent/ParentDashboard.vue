@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch, reactive } from 'vue'
 import axios from 'axios'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/auth'
 import { 
   User as UserIcon, 
@@ -21,9 +21,11 @@ import {
 
 const authStore = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const students = ref([])
 const selectedStudent = ref(null)
 const allBills = ref([])
+const paymentHistory = ref([])
 const loading = ref(false)
 const payingBillId = ref(null)
 const showStudentDropdown = ref(false)
@@ -35,6 +37,18 @@ const page = ref(1)
 const limit = ref(10)
 const isMounted = ref(false)
 const showFilters = ref(false)
+const notification = reactive({ show: false, message: '', type: 'success' })
+let notificationTimer
+
+const showNotification = (message, type = 'success') => {
+  clearTimeout(notificationTimer)
+  notification.message = message
+  notification.type = type
+  notification.show = true
+  notificationTimer = setTimeout(() => {
+    notification.show = false
+  }, 4500)
+}
 
 const fetchParentData = async () => {
   loading.value = true
@@ -58,6 +72,7 @@ const fetchBills = async () => {
   try {
     const billsRes = await axios.get('finance/my-bills')
     allBills.value = billsRes.data.data
+    syncSelectedStudentDeposit()
   } catch (err) {
     console.error('Gagal mengambil data tagihan')
   } finally {
@@ -65,10 +80,33 @@ const fetchBills = async () => {
   }
 }
 
+const syncSelectedStudentDeposit = () => {
+  if (!selectedStudent.value) return
+  const bill = allBills.value.find(item => item.student_id === selectedStudent.value.id)
+  if (bill) {
+    selectedStudent.value.deposit_balance = Number(bill.deposit_balance || selectedStudent.value.deposit_balance || 0)
+  }
+}
+
+const fetchPaymentHistory = async () => {
+  if (!selectedStudent.value?.id) {
+    paymentHistory.value = []
+    return
+  }
+  try {
+    const res = await axios.get(`finance/my-payments?student_id=${selectedStudent.value.id}`)
+    paymentHistory.value = res.data.data || []
+  } catch (err) {
+    paymentHistory.value = []
+    showNotification(err.response?.data?.message || 'Gagal mengambil riwayat pembayaran', 'error')
+  }
+}
+
 const selectStudent = (student) => {
   selectedStudent.value = student
   showStudentDropdown.value = false
   page.value = 1
+  fetchPaymentHistory()
 }
 
 const resetFilters = () => {
@@ -97,11 +135,8 @@ const filteredBills = computed(() => {
     )
   }
 
-  // Status filter
   if (statusFilter.value) {
     filtered = filtered.filter(b => b.status === statusFilter.value)
-  } else if (isHistoryView.value) {
-    filtered = filtered.filter(b => b.status === 'paid')
   }
 
   return filtered
@@ -109,19 +144,54 @@ const filteredBills = computed(() => {
 
 const isHistoryView = computed(() => route.path.includes('/history'))
 
+const paymentDetailNames = (payment) => {
+  const details = payment?.details || []
+  if (details.length === 0) return []
+  return details.map(detail => {
+    const name = detail.bill_type_name || detail.bill_name || 'Tagihan'
+    const period = detail.period ? ` ${formatPeriod({ period: detail.period })}` : ''
+    return `${name}${period}`
+  })
+}
+
+const filteredPayments = computed(() => {
+  let filtered = paymentHistory.value
+
+  if (search.value) {
+    const s = search.value.toLowerCase()
+    filtered = filtered.filter(payment => {
+      const detailText = paymentDetailNames(payment).join(' ').toLowerCase()
+      return (
+        String(payment.id || '').includes(s) ||
+        String(payment.transaction_ref || '').toLowerCase().includes(s) ||
+        String(payment.method || '').toLowerCase().includes(s) ||
+        String(payment.amount || '').includes(s) ||
+        detailText.includes(s)
+      )
+    })
+  }
+
+  return filtered
+})
+
+const currentRows = computed(() => isHistoryView.value ? filteredPayments.value : filteredBills.value)
+
 watch(isHistoryView, () => {
   statusFilter.value = ''
   page.value = 1
+  if (isHistoryView.value) {
+    fetchPaymentHistory()
+  }
 })
 
 const paginatedBills = computed(() => {
   const start = (page.value - 1) * limit.value
   const end = start + limit.value
-  return filteredBills.value.slice(start, end)
+  return currentRows.value.slice(start, end)
 })
 
-const totalPages = computed(() => Math.ceil(filteredBills.value.length / limit.value) || 1)
-const totalData = computed(() => filteredBills.value.length)
+const totalPages = computed(() => Math.ceil(currentRows.value.length / limit.value) || 1)
+const totalData = computed(() => currentRows.value.length)
 
 const visiblePages = computed(() => {
   const pages = []
@@ -160,8 +230,18 @@ const isOverdue = (bill) => {
 }
 
 const remainingAmount = (bill) => Math.max(0, Number(bill?.amount || 0) - Number(bill?.total_paid || 0))
+const canUseDeposit = (bill) => Number(selectedStudent.value?.deposit_balance || bill?.deposit_balance || 0) > 0 && remainingAmount(bill) > 0
 
 const selectedSummary = computed(() => {
+  if (isHistoryView.value) {
+    const payments = filteredPayments.value
+    return {
+      total: payments.length,
+      unpaid: payments.filter(p => p.channel === 'gateway').length,
+      overdue: payments.filter(p => p.deposit_applied > 0).length,
+      remaining: payments.reduce((acc, payment) => acc + Number(payment.amount || 0), 0)
+    }
+  }
   const bills = filteredBills.value
   return {
     total: bills.length,
@@ -171,20 +251,39 @@ const selectedSummary = computed(() => {
   }
 })
 
-const payWithMidtrans = async (bill) => {
+const payWithMidtrans = async (bill, useDeposit = false) => {
   if (isOverdue(bill)) {
-    alert('Tagihan sudah jatuh tempo. Pembayaran online ditutup, silakan bayar langsung ke admin/kasir sekolah secara cash atau transfer manual.')
+    showNotification('Tagihan sudah jatuh tempo. Pembayaran online ditutup, silakan bayar langsung ke admin/kasir sekolah.', 'error')
     return
   }
 
   const remaining = Number(bill.amount || 0) - Number(bill.total_paid || 0)
   if (remaining <= 0) return
+  const availableDeposit = useDeposit ? Number(selectedStudent.value?.deposit_balance || bill.deposit_balance || 0) : 0
+  const depositApplied = Math.min(availableDeposit, remaining)
 
   payingBillId.value = bill.id
   try {
+    if (useDeposit && depositApplied >= remaining) {
+      await axios.post('finance/payments', {
+        student_id: bill.student_id,
+        amount: remaining,
+        deposit_applied: remaining,
+        channel: 'deposit',
+        method: 'Saldo Deposit',
+        bill_ids: [bill.id],
+        note: 'Pembayaran tagihan dari saldo deposit parent web'
+      })
+      showNotification('Tagihan berhasil dibayar memakai saldo deposit.')
+      await fetchBills()
+      await fetchPaymentHistory()
+      return
+    }
+
     const res = await axios.post('finance/payment-intent', {
       student_id: bill.student_id,
       amount: remaining,
+      deposit_applied: depositApplied,
       bill_ids: [bill.id],
       is_bypass_rule: false
     })
@@ -192,26 +291,37 @@ const payWithMidtrans = async (bill) => {
     if (payment?.snap_token && window.snap) {
       window.snap.pay(payment.snap_token, {
         onSuccess: async () => {
-          alert('Pembayaran diterima Midtrans. Status akan diverifikasi otomatis oleh sistem.')
+          showNotification('Pembayaran diterima Midtrans. Status akan diverifikasi otomatis oleh sistem.')
           await fetchBills()
+          await fetchPaymentHistory()
         },
         onPending: async () => {
-          alert('Pembayaran masih menunggu penyelesaian.')
+          showNotification('Pembayaran masih menunggu penyelesaian.', 'warning')
           await fetchBills()
+          await fetchPaymentHistory()
         },
-        onError: () => alert('Pembayaran gagal diproses oleh Midtrans.'),
-        onClose: () => alert('Anda menutup halaman pembayaran.')
+        onError: () => showNotification('Pembayaran gagal diproses oleh Midtrans.', 'error'),
+        onClose: () => showNotification('Anda menutup halaman pembayaran.', 'warning')
       })
     } else if (payment?.payment_url) {
       window.location.href = payment.payment_url
     } else {
-      alert('Link pembayaran belum tersedia. Silakan coba lagi.')
+      showNotification('Link pembayaran belum tersedia. Silakan coba lagi.', 'error')
     }
   } catch (err) {
-    alert(err.response?.data?.message || 'Gagal membuat pembayaran Midtrans')
+    showNotification(err.response?.data?.message || 'Gagal membuat pembayaran Midtrans', 'error')
   } finally {
     payingBillId.value = null
   }
+}
+
+const printReceipt = (paymentId) => {
+  const url = router.resolve({ name: 'receipt-print', params: { id: paymentId } }).href
+  window.open(url, '_blank')
+}
+
+const openHistory = () => {
+  router.push('/parent/history')
 }
 
 const formatDate = (dateStr) => {
@@ -243,7 +353,7 @@ const formatPeriod = (bill) => {
 
 onMounted(() => {
   isMounted.value = true
-  fetchParentData()
+  fetchParentData().then(fetchPaymentHistory)
 })
 
 </script>
@@ -287,7 +397,7 @@ onMounted(() => {
             <input v-model="search" type="text" placeholder="Cari tagihan..." class="search-input-premium" />
           </div>
           
-          <div class="relative">
+          <div v-if="!isHistoryView" class="relative">
             <select v-model="statusFilter" class="appearance-none p-2.5 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500">
               <option value="">Semua Status</option>
               <option value="unpaid">Belum Lunas</option>
@@ -324,10 +434,10 @@ onMounted(() => {
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div v-for="card in [
-        { label: 'Total Tagihan', value: selectedSummary.total },
-        { label: 'Belum Lunas', value: selectedSummary.unpaid },
-        { label: 'Lewat Tempo', value: selectedSummary.overdue },
-        { label: 'Sisa Bayar', value: formatCurrency(selectedSummary.remaining), wide: true }
+        { label: isHistoryView ? 'Total Transaksi' : 'Total Tagihan', value: selectedSummary.total },
+        { label: isHistoryView ? 'Via Midtrans' : 'Belum Lunas', value: selectedSummary.unpaid },
+        { label: isHistoryView ? 'Pakai Saldo' : 'Lewat Tempo', value: selectedSummary.overdue },
+        { label: isHistoryView ? 'Total Dibayar' : 'Sisa Bayar', value: formatCurrency(selectedSummary.remaining), wide: true }
       ]" :key="card.label" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.22em]">{{ card.label }}</p>
         <p class="mt-2 text-xl font-black text-slate-800">{{ card.value }}</p>
@@ -360,11 +470,20 @@ onMounted(() => {
 
         <table class="premium-table w-full">
           <thead>
-            <tr>
+            <tr v-if="!isHistoryView">
               <th class="w-16">No</th>
               <th>Detail Tagihan</th>
               <th>Periode</th>
               <th>Jatuh Tempo</th>
+              <th>Nominal</th>
+              <th>Status</th>
+              <th class="text-center w-32">Aksi</th>
+            </tr>
+            <tr v-else>
+              <th class="w-16">No</th>
+              <th>Detail Pembayaran</th>
+              <th>Tanggal</th>
+              <th>Metode</th>
               <th>Nominal</th>
               <th>Status</th>
               <th class="text-center w-32">Aksi</th>
@@ -380,10 +499,11 @@ onMounted(() => {
                 <p class="text-xs text-slate-400 font-medium">{{ isHistoryView ? 'Belum ada pembayaran lunas yang sesuai dengan filter.' : 'Belum ada data tagihan yang sesuai dengan pencarian Anda.' }}</p>
               </td>
             </tr>
-            <tr v-for="(b, i) in paginatedBills" :key="b.id" class="hover:bg-slate-50/50 transition-colors group">
+            <tr v-for="(b, i) in paginatedBills" :key="`${isHistoryView ? 'payment' : 'bill'}-${b.id}`" class="hover:bg-slate-50/50 transition-colors group">
               <td class="text-center text-xs font-bold text-slate-400">
                 {{ (page - 1) * limit + i + 1 }}
               </td>
+              <template v-if="!isHistoryView">
               <td>
                 <div>
                   <p class="text-xs font-black text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight">
@@ -435,8 +555,8 @@ onMounted(() => {
                 </div>
               </td>
               <td class="text-center">
+                <div v-if="b.status !== 'paid'" class="space-y-2">
                  <button
-                  v-if="b.status !== 'paid'"
                   @click="payWithMidtrans(b)"
                   :disabled="payingBillId === b.id"
                   :title="isOverdue(b) ? 'Tagihan jatuh tempo harus dibayar ke kasir sekolah' : 'Bayar via Midtrans'"
@@ -450,11 +570,76 @@ onMounted(() => {
                   <BillIcon class="w-3.5 h-3.5" />
                   {{ payingBillId === b.id ? 'Loading...' : (isOverdue(b) ? 'Ke Kasir' : 'Bayar') }}
                 </button>
-                <button v-else class="w-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-indigo-600 font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 shadow-sm">
+                <button
+                  v-if="canUseDeposit(b) && !isOverdue(b)"
+                  @click="payWithMidtrans(b, true)"
+                  :disabled="payingBillId === b.id"
+                  class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-60"
+                  :title="selectedStudent.deposit_balance >= remainingAmount(b) ? 'Bayar penuh memakai saldo deposit' : 'Pakai saldo deposit sebagai potongan Midtrans'"
+                >
+                  <BillIcon class="w-3.5 h-3.5" />
+                  {{ selectedStudent.deposit_balance >= remainingAmount(b) ? 'Pakai Saldo' : 'Saldo + Bayar' }}
+                </button>
+                </div>
+                <button v-else @click="openHistory" class="w-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-indigo-600 font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 shadow-sm">
                   <ReceiptIcon class="w-3.5 h-3.5" />
                   Kwitansi
                 </button>
               </td>
+              </template>
+              <template v-else>
+                <td>
+                  <div>
+                    <p class="text-xs font-black text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight">
+                      Pembayaran #{{ b.id }}
+                    </p>
+                    <div class="mt-1 flex flex-wrap gap-1.5">
+                      <span v-for="name in paymentDetailNames(b).slice(0, 2)" :key="name" class="max-w-[180px] truncate px-2 py-1 bg-slate-100 rounded-lg text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                        {{ name }}
+                      </span>
+                      <span v-if="paymentDetailNames(b).length > 2" class="px-2 py-1 bg-indigo-50 rounded-lg text-[8px] font-black text-indigo-600 uppercase tracking-wider">
+                        +{{ paymentDetailNames(b).length - 2 }}
+                      </span>
+                      <span v-if="paymentDetailNames(b).length === 0" class="px-2 py-1 bg-slate-100 rounded-lg text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                        Alokasi otomatis
+                      </span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center gap-1.5">
+                    <CalendarIcon class="w-3.5 h-3.5 text-slate-400" />
+                    <span class="text-xs font-bold text-slate-600">{{ formatDate(b.paid_at || b.created_at) }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                    {{ b.method || b.channel || '-' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="space-y-1">
+                    <p class="text-xs font-black text-slate-800">{{ formatCurrency(b.amount) }}</p>
+                    <p v-if="b.deposit_applied > 0" class="text-[9px] font-black text-emerald-600 uppercase tracking-widest">
+                      Saldo: {{ formatCurrency(b.deposit_applied) }}
+                    </p>
+                  </div>
+                </td>
+                <td>
+                  <span class="px-2.5 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100/50 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm shadow-emerald-500/10 w-fit">
+                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>Lunas
+                  </span>
+                </td>
+                <td class="text-center">
+                  <button
+                    @click="printReceipt(b.id)"
+                    class="w-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-indigo-600 font-black py-2.5 px-3 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <ReceiptIcon class="w-3.5 h-3.5" />
+                    Kwitansi
+                  </button>
+                </td>
+              </template>
             </tr>
           </tbody>
         </table>
@@ -516,6 +701,20 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <transition name="fade">
+        <div
+          v-if="notification.show"
+          class="fixed top-6 right-6 z-[3000] px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 max-w-md"
+          :class="notification.type === 'error' ? 'bg-rose-600 text-white' : notification.type === 'warning' ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white'"
+        >
+          <AlertIcon v-if="notification.type === 'error' || notification.type === 'warning'" class="w-5 h-5 shrink-0" />
+          <PaidIcon v-else class="w-5 h-5 shrink-0" />
+          <span class="text-xs font-bold leading-relaxed">{{ notification.message }}</span>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 

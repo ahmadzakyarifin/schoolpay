@@ -87,6 +87,24 @@ type StudentBill struct {
 	RuleEndDate      *time.Time `bun:"rule_end_date,scanonly" json:"rule_end_date,omitempty"`
 }
 
+type StudentBillSummary struct {
+	ID             uint       `bun:"id" json:"id"`
+	StudentID      uint       `bun:"student_id" json:"student_id"`
+	StudentName    string     `bun:"student_name" json:"student_name"`
+	Amount         float64    `bun:"amount" json:"amount"`
+	TotalPaid      float64    `bun:"total_paid" json:"total_paid"`
+	Outstanding    float64    `bun:"outstanding" json:"outstanding"`
+	BillCount      int        `bun:"bill_count" json:"bill_count"`
+	PaidCount      int        `bun:"paid_count" json:"paid_count"`
+	PartialCount   int        `bun:"partial_count" json:"partial_count"`
+	OverdueCount   int        `bun:"overdue_count" json:"overdue_count"`
+	UnpaidCount    int        `bun:"unpaid_count" json:"unpaid_count"`
+	DepositBalance float64    `bun:"deposit_balance" json:"deposit_balance"`
+	Status         string     `bun:"status" json:"status"`
+	NearestDueDate *time.Time `bun:"nearest_due_date" json:"nearest_due_date,omitempty"`
+	LastBillAt     *time.Time `bun:"last_bill_at" json:"last_bill_at,omitempty"`
+}
+
 type Payment struct {
 	bun.BaseModel `bun:"table:payments,alias:p"`
 

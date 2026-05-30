@@ -42,7 +42,9 @@ const emit = defineEmits(['update:modelValue', 'apply', 'reset'])
             <select v-model="filters.status" class="w-full py-2.5 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-50 text-xs font-bold text-slate-700 pr-8 shadow-sm cursor-pointer outline-none transition-all">
               <option value="">Semua Status</option>
               <option value="paid">Lunas</option>
-              <option value="unpaid">Belum Lunas / Menunggak</option>
+              <option value="unpaid">Belum Lunas</option>
+              <option value="partial">Sebagian / Cicilan</option>
+              <option value="overdue">Menunggak</option>
             </select>
             <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
               <ChevronDownIcon class="w-3.5 h-3.5" />
@@ -56,9 +58,11 @@ const emit = defineEmits(['update:modelValue', 'apply', 'reset'])
           <div class="relative">
             <select v-model="filters.sort" class="w-full py-2.5 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-50 text-xs font-bold text-slate-700 pr-8 shadow-sm cursor-pointer outline-none transition-all">
               <option value="">Terbaru (Default)</option>
-              <option value="created_asc">Terlama</option>
               <option value="name_asc">Nama Siswa (A-Z)</option>
               <option value="name_desc">Nama Siswa (Z-A)</option>
+              <option value="amount_desc">Tunggakan Terbesar</option>
+              <option value="amount_asc">Tunggakan Terkecil</option>
+              <option value="due_asc">Jatuh Tempo Terdekat</option>
             </select>
             <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
               <ChevronDownIcon class="w-3.5 h-3.5" />

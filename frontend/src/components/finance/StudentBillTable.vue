@@ -31,6 +31,26 @@ const visiblePages = computed(() => {
   }
   return pages
 })
+
+const statusLabel = (status) => {
+  const labels = {
+    paid: 'Lunas',
+    partial: 'Sebagian',
+    overdue: 'Menunggak',
+    unpaid: 'Belum Lunas'
+  }
+  return labels[status] || 'Belum Lunas'
+}
+
+const statusClass = (status) => {
+  const classes = {
+    paid: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    partial: 'bg-amber-50 text-amber-600 border-amber-100',
+    overdue: 'bg-rose-50 text-rose-600 border-rose-100',
+    unpaid: 'bg-slate-50 text-slate-600 border-slate-200'
+  }
+  return classes[status] || classes.unpaid
+}
 </script>
 
 <template>
@@ -70,13 +90,17 @@ const visiblePages = computed(() => {
               <div class="flex flex-col gap-1">
                 <span :class="[
                   'inline-flex w-fit px-2.5 py-1 rounded text-[8px] font-black uppercase tracking-widest border',
-                  b.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                  statusClass(b.status)
                 ]">
-                  {{ b.status === 'paid' ? 'Lunas' : 'Belum Lunas' }}
+                  {{ statusLabel(b.status) }}
                 </span>
                 <div class="flex items-center gap-2">
-                  <span class="text-[10px] font-black text-slate-800">{{ formatCurrency(b.amount - (b.total_paid || 0)) }}</span>
+                  <span class="text-[10px] font-black text-slate-800">{{ formatCurrency(b.outstanding ?? (b.amount - (b.total_paid || 0))) }}</span>
                   <span class="text-[8px] font-bold text-slate-400">({{ b.bill_count }} Item)</span>
+                </div>
+                <div v-if="b.overdue_count || b.partial_count" class="flex items-center gap-1.5">
+                  <span v-if="b.overdue_count" class="text-[8px] font-black text-rose-500 uppercase">{{ b.overdue_count }} lewat tempo</span>
+                  <span v-if="b.partial_count" class="text-[8px] font-black text-amber-500 uppercase">{{ b.partial_count }} cicilan</span>
                 </div>
               </div>
             </td>

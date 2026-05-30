@@ -23,10 +23,11 @@ type StudentBillService interface {
 	GetByStudent(ctx context.Context, studentID uint) ([]domain.StudentBill, error)
 	GetByParent(ctx context.Context, parentID uint) ([]domain.StudentBill, error)
 	GetAll(ctx context.Context, search, sort string) ([]domain.StudentBill, error)
+	GetStudentSummaries(ctx context.Context, search, sort, status string, page, limit int) ([]domain.StudentBillSummary, int, error)
 	GetByID(ctx context.Context, id uint) (*domain.StudentBill, error)
 	Create(ctx context.Context, sb *domain.StudentBill) error
 	Update(ctx context.Context, sb *domain.StudentBill) error
-	Delete(ctx context.Context, id uint) error
+	Delete(ctx context.Context, id uint, reason ...string) error
 	SendManualReminder(ctx context.Context, id uint) error
 	RunScheduler()
 }
@@ -479,6 +480,10 @@ func (s *studentBillService) GetByParent(ctx context.Context, parentID uint) ([]
 	return s.repo.FindByParent(ctx, parentID)
 }
 
+func (s *studentBillService) GetStudentSummaries(ctx context.Context, search, sort, status string, page, limit int) ([]domain.StudentBillSummary, int, error) {
+	return s.repo.FindStudentSummaries(ctx, search, sort, status, page, limit)
+}
+
 func (s *studentBillService) GetAll(ctx context.Context, search, sort string) ([]domain.StudentBill, error) {
 	return s.repo.FindAll(ctx, search, sort)
 }
@@ -637,7 +642,7 @@ func (s *studentBillService) Update(ctx context.Context, sb *domain.StudentBill)
 	})
 }
 
-func (s *studentBillService) Delete(ctx context.Context, id uint) error {
+func (s *studentBillService) Delete(ctx context.Context, id uint, reason ...string) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		var b domain.StudentBill
 		if err := tx.NewSelect().Model(&b).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
@@ -657,9 +662,16 @@ func (s *studentBillService) Delete(ctx context.Context, id uint) error {
 		refundAmount := b.TotalPaid
 		oldStatus := b.Status
 		now := time.Now()
+		voidReason := ""
+		if len(reason) > 0 {
+			voidReason = reason[0]
+		}
+		if voidReason == "" {
+			voidReason = "MANUAL_VOID_BILL"
+		}
 		b.Status = "voided"
 		b.VoidedAt = &now
-		b.VoidReason = utils.StringPtr("MANUAL_VOID_BILL")
+		b.VoidReason = utils.StringPtr(voidReason)
 		if _, err := tx.NewUpdate().Model(&b).Column("status", "voided_at", "void_reason").WherePK().Exec(ctx); err != nil {
 			return err
 		}
@@ -697,7 +709,7 @@ func (s *studentBillService) Delete(ctx context.Context, id uint) error {
 		if s.audit != nil {
 			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
 			oldVals := map[string]interface{}{"status": oldStatus, "total_paid": refundAmount}
-			newVals := map[string]interface{}{"status": "voided"}
+			newVals := map[string]interface{}{"status": "voided", "void_reason": voidReason, "deposit_refund": refundAmount}
 			_ = s.audit.Log(ctx, tx, userID, userName, role, "VOID_BILL", "student_bills", id, oldVals, newVals, ipAddress, userAgent)
 		}
 		return nil

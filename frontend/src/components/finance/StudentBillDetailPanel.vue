@@ -66,10 +66,22 @@ const paymentDetailNames = (payment) => {
   return details.map(detail => detail.bill_type_name || detail.bill_name || 'Tagihan')
 }
 
-const getBillByMonth = (month) => {
+const getBillsByMonth = (month) => {
   if (!props.selectedStudent?.bills) return null
   const period = `${props.selectedRecapYear}-${month}`
-  return props.selectedStudent.bills.find(b => b.period === period)
+  return props.selectedStudent.bills.filter(b => b.period === period)
+}
+
+const getMonthRecap = (month) => {
+  const bills = getBillsByMonth(month) || []
+  if (bills.length === 0) return null
+  const total = bills.reduce((sum, bill) => sum + Number(bill.amount || 0), 0)
+  const paid = bills.reduce((sum, bill) => sum + Number(bill.total_paid || 0), 0)
+  const hasActive = bills.some(b => b.status !== 'paid' && b.status !== 'voided')
+  const hasPartial = bills.some(b => b.status === 'partial')
+  const allVoided = bills.every(b => b.status === 'voided')
+  const status = allVoided ? 'voided' : !hasActive ? 'paid' : hasPartial ? 'partial' : 'unpaid'
+  return { bills, total, paid, status }
 }
 </script>
 
@@ -171,8 +183,8 @@ const getBillByMonth = (month) => {
               class="group relative p-3 rounded-2xl border border-slate-50 bg-white shadow-sm flex flex-col items-center text-center transition-all hover:border-indigo-100"
             >
               <!-- Delete/Reset Button -->
-              <button v-if="getBillByMonth(month)" 
-                @click="emit('reset-bill', getBillByMonth(month).id)"
+              <button v-if="getMonthRecap(month)?.bills.length === 1" 
+                @click="emit('reset-bill', getMonthRecap(month).bills[0].id)"
                 class="absolute -top-1 -right-1 w-5 h-5 bg-white border border-slate-100 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:border-rose-100 shadow-sm opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 cursor-pointer"
                 title="Hapus / Reset Tagihan"
               >
@@ -181,25 +193,28 @@ const getBillByMonth = (month) => {
 
               <span class="text-[8px] font-black text-slate-300 uppercase mb-2">{{ month }}</span>
               
-              <template v-if="getBillByMonth(month)">
+              <template v-if="getMonthRecap(month)">
                 <div :class="[
                   'w-2 h-2 rounded-full mb-1 shadow-sm',
-                  getBillByMonth(month).status === 'paid' ? 'bg-emerald-400 shadow-emerald-200' : 
-                  getBillByMonth(month).status === 'partial' ? 'bg-amber-400 shadow-amber-200' : 
-                  getBillByMonth(month).status === 'voided' ? 'bg-slate-300 shadow-slate-100' : 'bg-rose-400 shadow-rose-200'
+                  getMonthRecap(month).status === 'paid' ? 'bg-emerald-400 shadow-emerald-200' : 
+                  getMonthRecap(month).status === 'partial' ? 'bg-amber-400 shadow-amber-200' : 
+                  getMonthRecap(month).status === 'voided' ? 'bg-slate-300 shadow-slate-100' : 'bg-rose-400 shadow-rose-200'
                 ]"></div>
                 <span :class="[
                   'text-[9px] font-black uppercase tracking-tighter',
-                  getBillByMonth(month).status === 'paid' ? 'text-emerald-600' : 
-                  getBillByMonth(month).status === 'partial' ? 'text-amber-600' : 
-                  getBillByMonth(month).status === 'voided' ? 'text-slate-400 line-through' : 'text-rose-600'
+                  getMonthRecap(month).status === 'paid' ? 'text-emerald-600' : 
+                  getMonthRecap(month).status === 'partial' ? 'text-amber-600' : 
+                  getMonthRecap(month).status === 'voided' ? 'text-slate-400 line-through' : 'text-rose-600'
                 ]">
-                  {{ getBillByMonth(month).status === 'paid' ? 'Lunas' : 
-                     getBillByMonth(month).status === 'partial' ? 'Cicil' : 
-                     getBillByMonth(month).status === 'voided' ? 'Batal' : 'Unpaid' }}
+                  {{ getMonthRecap(month).status === 'paid' ? 'Lunas' : 
+                     getMonthRecap(month).status === 'partial' ? 'Cicil' : 
+                     getMonthRecap(month).status === 'voided' ? 'Batal' : 'Unpaid' }}
+                </span>
+                <span class="text-[7px] font-black text-slate-400 mt-0.5">
+                  {{ getMonthRecap(month).bills.length }} tagihan
                 </span>
                 <span class="text-[7px] text-slate-400 mt-0.5">
-                  {{ formatCurrency(getBillByMonth(month).total_paid) }}
+                  {{ formatCurrency(getMonthRecap(month).paid) }} / {{ formatCurrency(getMonthRecap(month).total) }}
                 </span>
               </template>
               <template v-else>

@@ -245,6 +245,7 @@ func SetupAdminRoutes(
 		finance.GET("/billing-rules/:id/dependency-info", brHdl.GetDependencyInfo)
 
 		finance.GET("/bills", sbHdl.GetAll)
+		finance.GET("/bill-summaries", sbHdl.GetStudentSummaries)
 		finance.POST("/bills", financeWriteLimit, sbHdl.Create)
 		finance.PUT("/bills/:id", financeWriteLimit, sbHdl.Update)
 		finance.DELETE("/bills/:id", financeWriteLimit, sbHdl.Delete)

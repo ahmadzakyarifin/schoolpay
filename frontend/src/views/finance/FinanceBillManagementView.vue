@@ -85,11 +85,6 @@ const displayBillName = (bill) => {
   return bill?.name || (bill?.period ? `${bill.bill_type_name} ${formatPeriod(bill.period)}` : bill?.bill_type_name)
 }
 
-const getBillByMonth = (month) => {
-  if (!selectedStudent.value?.bills) return null
-  const period = `${selectedRecapYear.value}-${month}`
-  return selectedStudent.value.bills.find(b => b.period === period)
-}
 const paymentHistory = ref([])
 
 const notification = reactive({ show: false, message: '', type: 'success' })
@@ -100,6 +95,22 @@ const showNotification = (msg, type = 'success') => {
   notification.message = msg
   notification.type = type
   notifTimeout = setTimeout(() => { notification.show = false }, 4000)
+}
+
+const auditAction = reactive({
+  show: false,
+  type: '',
+  bill: null,
+  reason: '',
+  submitting: false
+})
+
+const closeAuditAction = () => {
+  auditAction.show = false
+  auditAction.type = ''
+  auditAction.bill = null
+  auditAction.reason = ''
+  auditAction.submitting = false
 }
 
 // Payment Form
@@ -182,9 +193,7 @@ const resetFilters = () => {
 const totalPages = computed(() => Math.ceil(total.value / limit.value) || 1)
 
 const paginatedBills = computed(() => {
-  const start = (page.value - 1) * limit.value
-  const end = start + limit.value
-  return bills.value.slice(start, end)
+  return bills.value
 })
 
 watch(search, () => {
@@ -220,57 +229,21 @@ const resetSearch = () => {
 const fetchBills = async () => {
   loading.value = true
   try {
-    const res = await financeService.getBills({
+    const res = await financeService.getBillSummaries({
       page: page.value,
-      limit: 50, // Increase limit for local grouping
+      limit: limit.value,
       search: search.value || undefined,
-      sort: activeFilters.sort || undefined
+      sort: activeFilters.sort || undefined,
+      status: activeFilters.status || undefined
     })
-    
-    const rawBills = res.data.data || []
-    
-    // Grouping by student_id to show 1 row per student
-    const grouped = rawBills.reduce((acc, bill) => {
-      const sId = bill.student_id
-      if (!acc[sId]) {
-        acc[sId] = {
-          id: bill.id, // For :key
-          student_id: sId,
-          student_name: bill.student_name,
-          status: 'paid',
-          amount: 0,
-          total_paid: 0,
-          bill_count: 0,
-          deposit_balance: Number(bill.deposit_balance || 0)
-        }
-      }
-      acc[sId].deposit_balance = Number(bill.deposit_balance || acc[sId].deposit_balance || 0)
-      
-      acc[sId].amount += bill.amount
-      acc[sId].total_paid += (bill.total_paid || 0)
-      acc[sId].bill_count++
-      
-      // If any bill is not paid, status is "unpaid"
-      if (bill.status !== 'paid') {
-        acc[sId].status = 'unpaid'
-      }
-      
-      return acc
-    }, {})
 
-    let resultList = Object.values(grouped)
-
-    if (activeFilters.status === 'paid') {
-      resultList = resultList.filter(item => item.status === 'paid')
-    } else if (activeFilters.status === 'unpaid') {
-      resultList = resultList.filter(item => item.status !== 'paid')
-    }
-
-    bills.value = resultList
-    total.value = bills.value.length
+    const payload = res.data.data || {}
+    bills.value = Array.isArray(payload.data) ? payload.data : []
+    total.value = Number(payload.total || bills.value.length)
   } catch (err) {
     console.error('Gagal mengambil data tagihan')
     bills.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -337,41 +310,54 @@ const allocationResult = computed(() => {
   return { allocation, change: remaining }
 })
 
-const handlePayManual = async (bill) => {
-  const remaining = bill.amount - bill.total_paid
-  const reason = prompt(`Catat pembayaran manual untuk tagihan "${bill.bill_type_name}" sebesar ${formatCurrency(remaining)}?\n\nMasukkan keterangan audit (wajib, misal: Tunai di koperasi, Beasiswa, Koreksi admin):`)
-  if (reason === null) return // Canceled
-  if (!reason.trim()) {
-    showNotification('Alasan pelunasan manual wajib diisi untuk kebutuhan audit!', 'error')
+const handlePayManual = (bill) => {
+  auditAction.show = true
+  auditAction.type = 'manual-pay'
+  auditAction.bill = bill
+  auditAction.reason = ''
+}
+
+const handleResetBill = (billOrId) => {
+  const bill = typeof billOrId === 'object' ? billOrId : selectedStudent.value?.bills?.find(item => item.id === billOrId)
+  auditAction.show = true
+  auditAction.type = 'reset-bill'
+  auditAction.bill = bill || { id: billOrId }
+  auditAction.reason = ''
+}
+
+const confirmAuditAction = async () => {
+  const reason = auditAction.reason.trim()
+  if (!reason) {
+    showNotification('Alasan audit wajib diisi', 'error')
+    return
+  }
+  if (!auditAction.bill?.id) {
+    showNotification('Data tagihan tidak valid', 'error')
     return
   }
 
   loading.value = true
+  auditAction.submitting = true
   try {
-    await axios.post(`finance/bills/${bill.id}/pay-manual`, { reason, note: reason, payment_method: 'Tunai' })
-    if (selectedStudent.value) {
-      await openStudentDetail(selectedStudent.value)
+    if (auditAction.type === 'manual-pay') {
+      await axios.post(`finance/bills/${auditAction.bill.id}/pay-manual`, { reason, note: reason, payment_method: 'Tunai' })
+      showNotification('Pembayaran manual berhasil dicatat', 'success')
+    } else {
+      await financeService.deleteBill(auditAction.bill.id, { reason })
+      showNotification('Tagihan berhasil direset/void', 'success')
     }
     await fetchBills()
+    if (selectedStudent.value) {
+      const updatedStudent = bills.value.find(s => s.student_id === selectedStudent.value.student_id) || selectedStudent.value
+      await openStudentDetail(updatedStudent)
+    }
+    closeAuditAction()
   } catch (err) {
-    const errMsg = err.response?.data?.message || 'Gagal melunasi tagihan secara manual'
+    const errMsg = err.response?.data?.message || 'Gagal memproses aksi audit'
     showNotification(errMsg, 'error')
   } finally {
     loading.value = false
-  }
-}
-
-const handleResetBill = async (id) => {
-  if (!confirm('Apakah Anda yakin ingin menghapus/reset tagihan ini? Status pembayaran di bulan ini akan hilang.')) return
-  
-  try {
-    await financeService.deleteBill(id)
-    showNotification('Tagihan berhasil direset', 'success')
-    if (selectedStudent.value) {
-      openStudentDetail(selectedStudent.value)
-    }
-  } catch (err) {
-    showNotification('Gagal reset tagihan', 'error')
+    auditAction.submitting = false
   }
 }
 
@@ -599,6 +585,66 @@ const formatCurrency = (val) => {
       @close="showSuccessModal = false" 
       @print="printReceipt" 
     />
+
+    <Teleport to="body">
+      <transition name="fade">
+        <div v-if="auditAction.show" class="fixed inset-0 z-[2500] bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-scale-in">
+            <div class="px-6 py-5 border-b border-slate-100 flex items-start justify-between">
+              <div>
+                <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Konfirmasi Audit</p>
+                <h3 class="mt-1 text-sm font-black text-slate-800">
+                  {{ auditAction.type === 'manual-pay' ? 'Catat Pembayaran Manual' : 'Reset / Void Tagihan' }}
+                </h3>
+              </div>
+              <button @click="closeAuditAction" class="p-2 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                <CloseIcon class="w-4 h-4" />
+              </button>
+            </div>
+
+            <div class="p-6 space-y-5">
+              <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Tagihan</p>
+                <p class="mt-1 text-xs font-black text-slate-700">{{ displayBillName(auditAction.bill) || auditAction.bill?.bill_type_name || 'Tagihan' }}</p>
+                <p class="mt-1 text-[10px] font-bold text-slate-500">
+                  Sisa: {{ formatCurrency((auditAction.bill?.amount || 0) - (auditAction.bill?.total_paid || 0)) }}
+                </p>
+              </div>
+
+              <div v-if="auditAction.type === 'reset-bill'" class="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                <p class="text-[10px] font-bold text-amber-700 leading-relaxed">
+                  Tagihan akan di-void. Jika sudah ada pembayaran, nominal yang tercatat akan dikembalikan ke saldo deposit siswa.
+                </p>
+              </div>
+
+              <label class="block space-y-2">
+                <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Alasan Audit Wajib</span>
+                <textarea
+                  v-model="auditAction.reason"
+                  rows="4"
+                  class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50"
+                  placeholder="Contoh: pembayaran tunai di koperasi / koreksi tagihan ganda / beasiswa"
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="px-6 py-5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button @click="closeAuditAction" class="px-5 py-2.5 rounded-xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50">
+                Batal
+              </button>
+              <button
+                @click="confirmAuditAction"
+                :disabled="auditAction.submitting"
+                class="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-60"
+                :class="auditAction.type === 'reset-bill' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'"
+              >
+                {{ auditAction.submitting ? 'Memproses...' : 'Konfirmasi' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
 
     <!-- Notification -->
     <Teleport to="body">

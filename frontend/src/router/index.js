@@ -147,7 +147,13 @@ const router = createRouter({
                 {
                     path: '/parent/bills',
                     name: 'parent-bills',
-                    component: () => import('../views/parent/ParentDashboard.vue'), // Mocking
+                    component: () => import('../views/parent/ParentDashboard.vue'),
+                    meta: { role: 'parent' }
+                },
+                {
+                    path: '/parent/history',
+                    name: 'parent-history',
+                    component: () => import('../views/parent/ParentDashboard.vue'),
                     meta: { role: 'parent' }
                 }
             ]

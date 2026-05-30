@@ -60,6 +60,26 @@ func (h *StudentBillHandler) GetMyBills(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "berhasil", list)
 }
 
+func (h *StudentBillHandler) GetStudentSummaries(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	search := c.Query("search")
+	sort := c.Query("sort")
+	status := c.Query("status")
+
+	list, total, err := h.s.GetStudentSummaries(c.Request.Context(), search, sort, status, page, limit)
+	if err != nil {
+		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		return
+	}
+	utils.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{
+		"data":  list,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
 func (h *StudentBillHandler) Create(c *gin.Context) {
 	var b domain.StudentBill
 	if err := c.ShouldBindJSON(&b); err != nil {
@@ -99,7 +119,20 @@ func (h *StudentBillHandler) Delete(c *gin.Context) {
 		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
-	if err := h.s.Delete(c.Request.Context(), uint(id)); err != nil {
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+			return
+		}
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		utils.ErrorResponse(c, http.StatusBadRequest, "alasan reset/void tagihan wajib diisi untuk kebutuhan audit")
+		return
+	}
+	if err := h.s.Delete(c.Request.Context(), uint(id), strings.TrimSpace(req.Reason)); err != nil {
 		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}

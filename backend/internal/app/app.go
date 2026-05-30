@@ -173,6 +173,7 @@ func NewApp(db *bun.DB, cfg *config.Config) *App {
 	sbHdl := financehandler.NewStudentBillHandler(sbSvc, paySvc)
 
 	finGroup.POST("/payments", financePaymentLimit, payHdl.Process)
+	finGroup.GET("/my-payments", payHdl.GetHistory)
 	finGroup.POST("/payment-intent", financePaymentLimit, payHdl.CreateIntent)
 	finGroup.GET("/my-bills", sbHdl.GetMyBills)
 	finGroup.GET("/payments/:id/receipt", payHdl.GetReceipt)

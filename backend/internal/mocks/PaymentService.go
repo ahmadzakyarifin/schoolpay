@@ -14,9 +14,9 @@ type PaymentService struct {
 	mock.Mock
 }
 
-// CreateIntent provides a mock function with given fields: ctx, studentID, amount, billIDs, isBypassRule
-func (_m *PaymentService) CreateIntent(ctx context.Context, studentID uint, amount float64, billIDs []uint, isBypassRule bool) (*domain.Payment, error) {
-	ret := _m.Called(ctx, studentID, amount, billIDs, isBypassRule)
+// CreateIntent provides a mock function with given fields: ctx, studentID, amount, depositApplied, billIDs, isBypassRule
+func (_m *PaymentService) CreateIntent(ctx context.Context, studentID uint, amount float64, depositApplied float64, billIDs []uint, isBypassRule bool) (*domain.Payment, error) {
+	ret := _m.Called(ctx, studentID, amount, depositApplied, billIDs, isBypassRule)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateIntent")
@@ -24,19 +24,19 @@ func (_m *PaymentService) CreateIntent(ctx context.Context, studentID uint, amou
 
 	var r0 *domain.Payment
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint, float64, []uint, bool) (*domain.Payment, error)); ok {
-		return rf(ctx, studentID, amount, billIDs, isBypassRule)
+	if rf, ok := ret.Get(0).(func(context.Context, uint, float64, float64, []uint, bool) (*domain.Payment, error)); ok {
+		return rf(ctx, studentID, amount, depositApplied, billIDs, isBypassRule)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint, float64, []uint, bool) *domain.Payment); ok {
-		r0 = rf(ctx, studentID, amount, billIDs, isBypassRule)
+	if rf, ok := ret.Get(0).(func(context.Context, uint, float64, float64, []uint, bool) *domain.Payment); ok {
+		r0 = rf(ctx, studentID, amount, depositApplied, billIDs, isBypassRule)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*domain.Payment)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint, float64, []uint, bool) error); ok {
-		r1 = rf(ctx, studentID, amount, billIDs, isBypassRule)
+	if rf, ok := ret.Get(1).(func(context.Context, uint, float64, float64, []uint, bool) error); ok {
+		r1 = rf(ctx, studentID, amount, depositApplied, billIDs, isBypassRule)
 	} else {
 		r1 = ret.Error(1)
 	}

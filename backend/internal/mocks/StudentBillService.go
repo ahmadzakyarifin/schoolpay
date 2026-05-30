@@ -67,17 +67,22 @@ func (_m *StudentBillService) Create(ctx context.Context, sb *domain.StudentBill
 	return r0
 }
 
-// Delete provides a mock function with given fields: ctx, id
-func (_m *StudentBillService) Delete(ctx context.Context, id uint) error {
-	ret := _m.Called(ctx, id)
+// Delete provides a mock function with given fields: ctx, id, reason
+func (_m *StudentBillService) Delete(ctx context.Context, id uint, reason ...string) error {
+	var _ca []interface{}
+	_ca = append(_ca, ctx, id)
+	for _, item := range reason {
+		_ca = append(_ca, item)
+	}
+	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Delete")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint) error); ok {
-		r0 = rf(ctx, id)
+	if rf, ok := ret.Get(0).(func(context.Context, uint, ...string) error); ok {
+		r0 = rf(ctx, id, reason...)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -131,6 +136,43 @@ func (_m *StudentBillService) GetAll(ctx context.Context, search string, sort st
 	}
 
 	return r0, r1
+}
+
+// GetStudentSummaries provides a mock function with given fields: ctx, search, sort, status, page, limit
+func (_m *StudentBillService) GetStudentSummaries(ctx context.Context, search string, sort string, status string, page int, limit int) ([]domain.StudentBillSummary, int, error) {
+	ret := _m.Called(ctx, search, sort, status, page, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetStudentSummaries")
+	}
+
+	var r0 []domain.StudentBillSummary
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int, int) ([]domain.StudentBillSummary, int, error)); ok {
+		return rf(ctx, search, sort, status, page, limit)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, int, int) []domain.StudentBillSummary); ok {
+		r0 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.StudentBillSummary)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, int, int) int); ok {
+		r1 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, string, string, string, int, int) error); ok {
+		r2 = rf(ctx, search, sort, status, page, limit)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // GetByID provides a mock function with given fields: ctx, id

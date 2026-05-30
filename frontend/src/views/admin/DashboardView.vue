@@ -263,6 +263,55 @@ const formatPaymentMethod = (method) => {
   return String(method).replace(/_/g, ' ').toUpperCase()
 }
 
+const parseActivityTime = (value) => {
+  if (!value || String(value).startsWith('0001-01-01')) return 0
+  const time = new Date(value).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+const notificationChannel = (notif) => notif?.channel || (notif?.whatsapp_id ? 'whatsapp' : 'email')
+
+const notificationTitle = (notif) => {
+  const title = String(notif?.title || '').trim()
+  if (title) return title
+  return notificationChannel(notif) === 'email' ? 'Email notifikasi' : 'WhatsApp notifikasi'
+}
+
+const notificationRecipient = (notif) => {
+  return notif?.recipient_name || notif?.recipient_phone || notif?.recipient_email || 'Penerima'
+}
+
+const notificationPreview = (notif) => {
+  const error = String(notif?.delivery_error || '').trim()
+  if (String(notif?.delivery_status).toLowerCase() === 'failed' && error) return error
+  return String(notif?.message || 'Tidak ada isi pesan').replace(/\s+/g, ' ').trim()
+}
+
+const paymentActivityTitle = (payment) => {
+  const student = payment?.student_name || 'Siswa'
+  return `${student} membayar ${paymentSummaryTitle(payment)}`
+}
+
+const recentActivities = computed(() => {
+  const payments = recentPayments.value.map((payment) => ({
+    id: `payment-${payment.id}`,
+    type: 'payment',
+    created_at: payment.created_at,
+    raw: payment
+  }))
+
+  const notifications = recentNotifications.value.map((notif) => ({
+    id: `notif-${notif.id}`,
+    type: 'notification',
+    created_at: notif.created_at,
+    raw: notif
+  }))
+
+  return [...payments, ...notifications]
+    .sort((a, b) => parseActivityTime(b.created_at) - parseActivityTime(a.created_at))
+    .slice(0, 12)
+})
+
 const formatCurrency = (val) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency', currency: 'IDR', minimumFractionDigits: 0
@@ -327,7 +376,8 @@ const communicationStatuses = [
 const channelLabel = (channel) => channel === 'email' ? 'Email' : 'WhatsApp'
 
 const statusLabel = (status) => {
-  return communicationStatuses.find(s => s.key === String(status).toLowerCase())?.label || status
+  const normalized = String(status || 'sent').toLowerCase() === 'success' ? 'sent' : String(status || 'sent').toLowerCase()
+  return communicationStatuses.find(s => s.key === normalized)?.label || status
 }
 
 const normalizedChannelStats = (channel) => {
@@ -373,7 +423,8 @@ const communicationTables = computed(() => [
 ])
 
 const statusBadgeClass = (status) => {
-  switch (String(status).toLowerCase()) {
+  const normalized = String(status || 'sent').toLowerCase() === 'success' ? 'sent' : String(status || 'sent').toLowerCase()
+  switch (normalized) {
     case 'read':
       return 'bg-emerald-50 text-emerald-600 border-emerald-100'
     case 'delivered':
@@ -665,41 +716,50 @@ onUnmounted(() => {
            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Aktivitas Terbaru</h3>
            <ClockIcon class="w-4 h-4 text-slate-300" />
         </div>
-        <div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-            <div v-for="pay in recentPayments" :key="'p'+pay.id" class="flex gap-4 group">
-               <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
-                  <WalletIcon class="w-4 h-4" />
-               </div>
-               <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between">
-                    <p class="text-[11px] font-black text-slate-800 uppercase leading-tight truncate">{{ pay.student_name }} Membayar {{ paymentSummaryTitle(pay) }}</p>
-                    <button @click="printReceipt(pay.id)" class="opacity-0 group-hover:opacity-100 transition-all text-slate-400 hover:text-indigo-600 shrink-0" title="Cetak kwitansi">
-                      <PrintIcon class="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <p class="text-[10px] font-bold text-slate-500 uppercase mt-1">{{ formatCurrency(pay.amount) }} • {{ formatPaymentMethod(pay.method) }}</p>
-                  <p class="text-[9px] text-slate-300 mt-0.5">{{ formatDateTime(pay.created_at) }} <span v-if="pay.transaction_ref">• {{ pay.transaction_ref }}</span></p>
-               </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
+            <div v-for="activity in recentActivities" :key="activity.id" class="flex gap-4 group">
+               <template v-if="activity.type === 'payment'">
+                 <div class="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                    <WalletIcon class="w-4 h-4" />
+                 </div>
+                 <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-3">
+                      <p class="text-[12px] font-black text-slate-800 leading-snug truncate">{{ paymentActivityTitle(activity.raw) }}</p>
+                      <button @click="printReceipt(activity.raw.id)" class="opacity-0 group-hover:opacity-100 transition-all text-slate-400 hover:text-indigo-600 shrink-0" title="Cetak kwitansi">
+                        <PrintIcon class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[9px] font-black uppercase tracking-wider">
+                      <span class="text-emerald-600">{{ formatCurrency(activity.raw.amount) }}</span>
+                      <span class="text-slate-300">•</span>
+                      <span class="text-slate-500">{{ formatPaymentMethod(activity.raw.method) }}</span>
+                      <span v-if="activity.raw.class_name" class="text-slate-300">•</span>
+                      <span v-if="activity.raw.class_name" class="text-slate-400">{{ activity.raw.class_name }}</span>
+                    </div>
+                    <p class="text-[9px] text-slate-300 mt-1">{{ formatDateTime(activity.raw.created_at) }} <span v-if="activity.raw.transaction_ref">• {{ activity.raw.transaction_ref }}</span></p>
+                 </div>
+               </template>
+
+               <template v-else>
+                <div :class="[String(activity.raw.delivery_status).toLowerCase() === 'failed' ? 'bg-rose-50 text-rose-500' : (notificationChannel(activity.raw) === 'email' ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600'), 'w-10 h-10 rounded-xl flex items-center justify-center shrink-0']">
+                   <component :is="String(activity.raw.delivery_status).toLowerCase() === 'failed' ? AlertIcon : SendIcon" class="w-4 h-4" />
+                </div>
+                <div class="min-w-0 flex-1">
+                   <div class="flex items-start gap-2">
+                     <p class="text-[12px] font-black text-slate-800 leading-snug truncate">{{ notificationTitle(activity.raw) }}</p>
+                     <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0" :class="channelBadgeClass(notificationChannel(activity.raw))">
+                       {{ channelLabel(notificationChannel(activity.raw)) }}
+                     </span>
+                   </div>
+                   <p class="text-[10px] font-medium text-slate-500 line-clamp-2 mt-1">{{ notificationRecipient(activity.raw) }} • {{ notificationPreview(activity.raw) }}</p>
+                   <div class="mt-1.5 flex items-center gap-2">
+                     <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border" :class="statusBadgeClass(activity.raw.delivery_status)">{{ statusLabel(activity.raw.delivery_status) }}</span>
+                     <span class="text-[9px] text-slate-300">{{ formatDateTime(activity.raw.created_at) }}</span>
+                   </div>
+                </div>
+               </template>
             </div>
-           <div v-for="notif in recentNotifications" :key="'n'+notif.id" class="flex gap-4">
-              <div :class="[String(notif.delivery_status).toLowerCase() === 'failed' ? 'bg-rose-50 text-rose-500' : (notif.channel === 'email' ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600'), 'w-10 h-10 rounded-xl flex items-center justify-center shrink-0']">
-                 <component :is="String(notif.delivery_status).toLowerCase() === 'failed' ? AlertIcon : SendIcon" class="w-4 h-4" />
-              </div>
-              <div class="min-w-0 flex-1">
-                 <div class="flex items-center gap-2">
-                   <p class="text-[11px] font-black text-slate-800 uppercase leading-tight truncate">{{ notif.title }}</p>
-                   <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0" :class="channelBadgeClass(notif.channel || (notif.whatsapp_id ? 'whatsapp' : 'email'))">
-                     {{ notif.channel || (notif.whatsapp_id ? 'WA' : 'Email') }}
-                   </span>
-                 </div>
-                 <p class="text-[10px] font-medium text-slate-500 line-clamp-1 mt-1">{{ notif.recipient_name || 'Penerima' }} • {{ notif.message }}</p>
-                 <div class="mt-1 flex items-center gap-2">
-                   <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border" :class="statusBadgeClass(notif.delivery_status)">{{ statusLabel(notif.delivery_status) }}</span>
-                   <span class="text-[9px] text-slate-300">{{ formatDateTime(notif.created_at) }}</span>
-                 </div>
-              </div>
-           </div>
-           <div v-if="recentPayments.length === 0 && recentNotifications.length === 0" class="py-16 text-center">
+           <div v-if="recentActivities.length === 0" class="py-16 text-center">
              <ClockIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
              <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Belum ada aktivitas sesuai filter</p>
            </div>

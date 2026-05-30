@@ -4,14 +4,17 @@ const financeService = {
   getBills(params) {
     return axios.get('finance/bills', { params })
   },
+  getBillSummaries(params) {
+    return axios.get('finance/bill-summaries', { params })
+  },
   createBill(data) {
     return axios.post('finance/bills', data)
   },
   updateBill(id, data) {
     return axios.put(`finance/bills/${id}`, data)
   },
-  deleteBill(id) {
-    return axios.delete(`finance/bills/${id}`)
+  deleteBill(id, data) {
+    return axios.delete(`finance/bills/${id}`, { data })
   },
   
   getBillTypes(params) {

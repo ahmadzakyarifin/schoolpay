@@ -91,7 +91,14 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 	if len(billIDs) == 0 {
 		return nil, fmt.Errorf("gagal: tidak ada tagihan yang bisa dibayar")
 	}
+
+	student, err := s.stuRepo.FindByID(ctx, studentID)
+	if err != nil || student == nil {
+		return nil, fmt.Errorf("siswa tidak ditemukan")
+	}
+
 	today := time.Now().Truncate(24 * time.Hour)
+	targetOutstanding := 0.0
 	for _, billID := range billIDs {
 		bill, err := s.sbRepo.FindByID(ctx, billID)
 		if err != nil {
@@ -106,6 +113,21 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 		if role == "parent" && bill.DueDate.Before(today) {
 			return nil, fmt.Errorf("gagal: tagihan %s sudah jatuh tempo. Pembayaran online ditutup, silakan bayar langsung ke admin sekolah", bill.BillTypeName)
 		}
+		if bill.Status != "paid" {
+			targetOutstanding += bill.Amount - bill.TotalPaid
+		}
+	}
+	if targetOutstanding <= 0 {
+		return nil, fmt.Errorf("gagal: tagihan yang dipilih sudah lunas")
+	}
+	if amount > targetOutstanding {
+		return nil, fmt.Errorf("gagal: nominal pembayaran melebihi total sisa tagihan yang dipilih")
+	}
+	if depositApplied > targetOutstanding {
+		return nil, fmt.Errorf("gagal: saldo yang digunakan melebihi total sisa tagihan yang dipilih")
+	}
+	if depositApplied > student.DepositBalance {
+		return nil, fmt.Errorf("gagal: Saldo deposit siswa tidak mencukupi (Saldo: %s, Digunakan: %s)", utils.FormatCurrency(student.DepositBalance), utils.FormatCurrency(depositApplied))
 	}
 	if err := s.validateAllocationRules(ctx, amount, billIDs); err != nil {
 		return nil, err
@@ -135,7 +157,6 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 		midtrans.Environment = midtrans.Production
 	}
 
-	student, _ := s.stuRepo.FindByID(ctx, studentID)
 	studentName := "Siswa"
 	if student != nil {
 		studentName = student.Name
@@ -550,6 +571,12 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 					Where("sb.id = ?", bID).For("UPDATE").Scan(ctx); err != nil {
 					return err
 				}
+				if role == "parent" {
+					today := time.Now().Truncate(24 * time.Hour)
+					if b.DueDate.Before(today) {
+						return fmt.Errorf("gagal: Tagihan %s sudah jatuh tempo. Pembayaran online ditutup, silakan bayar langsung ke admin sekolah", b.BillTypeName)
+					}
+				}
 				if b.Status == "voided" {
 					return fmt.Errorf("gagal: Tagihan %s sudah ditarik/void dan tidak bisa dibayar", b.BillTypeName)
 				}
@@ -642,6 +669,18 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 }
 
 func (s *paymentService) GetHistory(ctx context.Context, studentID uint) ([]domain.Payment, error) {
+	if s.audit != nil {
+		userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+		if role == "parent" {
+			student, err := s.stuRepo.FindByID(ctx, studentID)
+			if err != nil || student == nil {
+				return nil, fmt.Errorf("siswa tidak ditemukan")
+			}
+			if student.ParentID != userID {
+				return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
+			}
+		}
+	}
 	return s.repo.FindByStudent(ctx, studentID)
 }
 
