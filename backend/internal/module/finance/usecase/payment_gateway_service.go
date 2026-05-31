@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/hex"
 	"strings"
 
@@ -24,6 +25,10 @@ func (s *paymentGatewayService) VerifySignature(orderID, statusCode, grossAmount
 	payload := orderID + statusCode + grossAmount + s.cfg.MidtransServerKey
 	hash := sha512.Sum512([]byte(payload))
 	expected := hex.EncodeToString(hash[:])
+	actual := strings.ToLower(strings.TrimSpace(signatureKey))
 
-	return strings.EqualFold(expected, signatureKey)
+	if len(actual) != len(expected) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) == 1
 }

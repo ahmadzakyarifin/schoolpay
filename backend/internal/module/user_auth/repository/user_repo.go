@@ -57,6 +57,7 @@ func (r *userRepo) FindByID(ctx context.Context, id uint) (*domain.User, error) 
 	err := r.db.NewSelect().
 		Model(&user).
 		ColumnExpr("u.*").
+		ColumnExpr("CASE WHEN u.password_hash IS NOT NULL AND u.password_hash <> '' THEN 1 ELSE 0 END as has_password").
 		ColumnExpr("(SELECT COUNT(*) FROM students s WHERE s.parent_id = u.id AND s.deleted_at IS NULL) as student_count").
 		ColumnExpr("(SELECT GROUP_CONCAT(CONCAT(s.id, '::', s.name) ORDER BY s.name ASC SEPARATOR '||') FROM students s WHERE s.parent_id = u.id AND s.deleted_at IS NULL) as student_names").
 		Where("u.id = ?", id).
@@ -203,6 +204,7 @@ func (r *userRepo) FindPaginated(ctx context.Context, page, limit int, search, r
 	q := r.db.NewSelect().
 		Model(&users).
 		ColumnExpr("u.*").
+		ColumnExpr("CASE WHEN u.password_hash IS NOT NULL AND u.password_hash <> '' THEN 1 ELSE 0 END as has_password").
 		ColumnExpr("(SELECT COUNT(*) FROM students st WHERE st.parent_id = u.id AND st.deleted_at IS NULL) as student_count").
 		ColumnExpr("(SELECT GROUP_CONCAT(CONCAT(st.id, '::', st.name) ORDER BY st.name ASC SEPARATOR '||') FROM students st WHERE st.parent_id = u.id AND st.deleted_at IS NULL) as student_names")
 

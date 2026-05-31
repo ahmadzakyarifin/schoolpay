@@ -17,6 +17,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 )
 
@@ -30,6 +31,7 @@ func RouterWebhookSetup(
 	sbSvc financeusecase.StudentBillService,
 	finNotifSvc notificationusecase.FinanceNotificationService,
 	auditSvc auditusecase.AuditLogService,
+	redisClient *redis.Client,
 ) {
 	repo := webhookrepo.NewWebhookRepo(db)
 	payRepo := financerepo.NewPaymentRepo(db)
@@ -41,10 +43,10 @@ func RouterWebhookSetup(
 
 	waSvc := notificationusecase.NewWhatsAppService()
 	supportSvc := supportusecase.NewSupportService(db, supportRepo, userRepo, waSvc, auditSvc)
-	svc := webhookusecase.NewWebhookService(repo, waSvc, notiRepo, sbRepo, payRepo, stuRepo, userRepo, hub, supportSvc, cfg)
+	svc := webhookusecase.NewWebhookService(repo, waSvc, notiRepo, sbRepo, payRepo, stuRepo, userRepo, hub, supportSvc, cfg, redisClient)
 	pgSvc := financeusecase.NewPaymentGatewayService(cfg)
 
-	hdl := webhookhandler.NewWebhookHandler(svc, paySvc, pgSvc)
+	hdl := webhookhandler.NewWebhookHandler(svc, paySvc, pgSvc, cfg)
 
 	// Register Webhook to WAHA automatically on startup
 	go waSvc.RegisterWebhook()

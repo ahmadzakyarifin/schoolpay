@@ -1,9 +1,11 @@
 package delivery
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
+	"github.com/ahmadzakyarifin/schoolpay/config"
 	financeusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
 	webhookusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
@@ -14,10 +16,11 @@ type WebhookHandler struct {
 	s   webhookusecase.WebhookService
 	pay financeusecase.PaymentService
 	pg  financeusecase.PaymentGatewayService
+	cfg *config.Config
 }
 
-func NewWebhookHandler(s webhookusecase.WebhookService, pay financeusecase.PaymentService, pg financeusecase.PaymentGatewayService) *WebhookHandler {
-	return &WebhookHandler{s: s, pay: pay, pg: pg}
+func NewWebhookHandler(s webhookusecase.WebhookService, pay financeusecase.PaymentService, pg financeusecase.PaymentGatewayService, cfg *config.Config) *WebhookHandler {
+	return &WebhookHandler{s: s, pay: pay, pg: pg, cfg: cfg}
 }
 
 func (h *WebhookHandler) HandlePayment(c *gin.Context) {
@@ -46,6 +49,14 @@ func (h *WebhookHandler) HandlePayment(c *gin.Context) {
 }
 
 func (h *WebhookHandler) HandleWAHA(c *gin.Context) {
+	if h.cfg != nil && h.cfg.WAHAWebhookSecret != "" {
+		secret := c.GetHeader("X-SchoolPay-Webhook-Secret")
+		if subtle.ConstantTimeCompare([]byte(secret), []byte(h.cfg.WAHAWebhookSecret)) != 1 {
+			utils.ErrorResponse(c, http.StatusUnauthorized, "invalid webhook secret")
+			return
+		}
+	}
+
 	var payload json.RawMessage
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		utils.ErrorResponse(c, http.StatusBadRequest, "invalid payload")

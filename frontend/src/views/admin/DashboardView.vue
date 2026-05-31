@@ -365,7 +365,7 @@ const getPercentage = (val, total) => {
   return ((val / total) * 100).toFixed(1) + '%'
 }
 
-const communicationStatuses = [
+const whatsappCommunicationStatuses = [
   { key: 'pending', label: 'Menunggu', icon: ClockIcon, note: 'Masuk antrean, belum ada hasil kirim' },
   { key: 'sent', label: 'Terkirim', icon: SendIcon, note: 'Berhasil dikirim dari sistem' },
   { key: 'delivered', label: 'Diterima', icon: CheckIcon, note: 'Diterima perangkat tujuan' },
@@ -373,16 +373,23 @@ const communicationStatuses = [
   { key: 'failed', label: 'Gagal', icon: ErrorIcon, note: 'Gagal dikirim, lihat alasan error' }
 ]
 
+const emailCommunicationStatuses = [
+  { key: 'pending', label: 'Menunggu', icon: ClockIcon, note: 'Masuk antrean email, belum ada hasil kirim' },
+  { key: 'sent', label: 'Terkirim', icon: SendIcon, note: 'Email berhasil dikirim dari sistem' },
+  { key: 'failed', label: 'Gagal', icon: ErrorIcon, note: 'Gagal dikirim, lihat alasan error' }
+]
+
+const communicationStatusOptions = (channel) => channel === 'email' ? emailCommunicationStatuses : whatsappCommunicationStatuses
 const channelLabel = (channel) => channel === 'email' ? 'Email' : 'WhatsApp'
 
 const statusLabel = (status) => {
   const normalized = String(status || 'sent').toLowerCase() === 'success' ? 'sent' : String(status || 'sent').toLowerCase()
-  return communicationStatuses.find(s => s.key === normalized)?.label || status
+  return [...whatsappCommunicationStatuses, ...emailCommunicationStatuses].find(s => s.key === normalized)?.label || status
 }
 
 const normalizedChannelStats = (channel) => {
   const raw = demographics.value?.[channel] || {}
-  return communicationStatuses.reduce((acc, status) => {
+  return communicationStatusOptions(channel).reduce((acc, status) => {
     acc[status.key] = Number(raw[status.key] || (status.key === 'sent' ? raw.success : 0) || 0)
     return acc
   }, {})
@@ -390,13 +397,13 @@ const normalizedChannelStats = (channel) => {
 
 const communicationTotal = (channel) => {
   const data = normalizedChannelStats(channel)
-  return communicationStatuses.reduce((acc, status) => acc + Number(data[status.key] || 0), 0)
+  return communicationStatusOptions(channel).reduce((acc, status) => acc + Number(data[status.key] || 0), 0)
 }
 
 const communicationRows = (channel) => {
   const data = normalizedChannelStats(channel)
   const total = communicationTotal(channel)
-  return communicationStatuses.map(status => ({
+  return communicationStatusOptions(channel).map(status => ({
     ...status,
     count: Number(data[status.key] || 0),
     percent: getPercentage(Number(data[status.key] || 0), total)

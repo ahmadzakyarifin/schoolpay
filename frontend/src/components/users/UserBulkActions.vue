@@ -27,7 +27,8 @@ const eligibleUsers = computed(() => {
   return props.selectedUsers.filter(u => {
     const isActive = u.is_active
     const isParentWithChild = u.role !== 'parent' || (u.student_count && u.student_count > 0)
-    return isActive && isParentWithChild
+    const hasNoPassword = !u.has_password
+    return isActive && isParentWithChild && hasNoPassword
   })
 })
 
@@ -50,12 +51,12 @@ const handleResend = (channel) => {
           :class="{ 'ring-2 ring-indigo-100': showMenu }"
         >
           <SendIcon class="w-3.5 h-3.5 text-indigo-500" />
-          <span>Kirim Notifikasi ({{ eligibleUsers.length }})</span>
+          <span>Kirim Aktivasi ({{ eligibleUsers.length }})</span>
           <ChevronIcon class="w-3.5 h-3.5 text-indigo-400 transition-transform" :class="{ 'rotate-180': showMenu }" />
         </button>
 
         <!-- Warning badge if some users are ineligible -->
-        <div v-if="hasIneligible" class="absolute -top-2 -right-2 w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm cursor-help" :title="`${selectedCount - eligibleUsers.length} user dilewati karena Non-Aktif atau Wali tanpa anak` ">
+        <div v-if="hasIneligible" class="absolute -top-2 -right-2 w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-sm cursor-help" :title="`${selectedCount - eligibleUsers.length} user dilewati karena Non-Aktif, sudah punya password, atau Wali tanpa anak` ">
           <span class="text-[9px] font-black">!</span>
         </div>
 
@@ -65,7 +66,7 @@ const handleResend = (channel) => {
             class="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-[0_15px_50px_rgba(0,0,0,0.2)] border border-slate-100 z-[200] overflow-hidden p-2 origin-top-left"
           >
             <div class="px-3 py-2 border-b border-slate-50 mb-1 flex items-center justify-between">
-              <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pilih Media</h4>
+              <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kirim Aktivasi</h4>
               <button @click="showMenu = false" class="p-1 hover:bg-slate-100 text-slate-400 rounded-md">
                 <CloseIcon class="w-3 h-3" />
               </button>

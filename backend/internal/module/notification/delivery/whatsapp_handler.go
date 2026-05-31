@@ -3,6 +3,7 @@ package delivery
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
@@ -14,7 +15,7 @@ import (
 )
 
 type WhatsAppHandler struct {
-	s    usecase.WhatsAppService
+	s     usecase.WhatsAppService
 	noti  notificationrepo.NotificationRepo
 	msg   utils.Messenger
 	db    *bun.DB
@@ -46,7 +47,6 @@ func (h *WhatsAppHandler) GetQR(c *gin.Context) {
 
 	c.Data(http.StatusOK, "image/png", qr)
 }
-
 
 func (h *WhatsAppHandler) Logout(c *gin.Context) {
 	if err := h.s.LogoutSession(); err != nil {
@@ -171,15 +171,16 @@ func (h *WhatsAppHandler) ResendSpecificNotification(c *gin.Context) {
 
 	var sendErr error
 	var whatsappID string
+	targetChannel := strings.ToLower(strings.TrimSpace(noti.Channel))
 
-	if noti.WhatsappID != nil && *noti.WhatsappID != "" && user.PhoneNumber != "" {
+	if targetChannel == "whatsapp" && user.PhoneNumber != "" {
 		wID, err := h.msg.SendWhatsApp(user.PhoneNumber, noti.Message)
 		if err != nil {
 			sendErr = err
 		} else {
 			whatsappID = wID
 		}
-	} else if user.Email != "" {
+	} else if targetChannel == "email" && user.Email != "" {
 		err := h.msg.SendEmail(user.Email, noti.Title, noti.Message)
 		if err != nil {
 			sendErr = err
@@ -210,11 +211,23 @@ func (h *WhatsAppHandler) ResendSpecificNotification(c *gin.Context) {
 			noti.WhatsappID = &whatsappID
 		}
 	}
+	if targetChannel != "" {
+		noti.Channel = targetChannel
+	} else if whatsappID != "" {
+		noti.Channel = "whatsapp"
+	} else if user.Email != "" {
+		noti.Channel = "email"
+	}
 
-	_, _ = h.db.NewUpdate().Model(noti).Column("delivery_status", "delivery_error", "whatsapp_id", "updated_at").WherePK().Exec(c.Request.Context())
+	_, _ = h.db.NewUpdate().Model(noti).Column("channel", "delivery_status", "delivery_error", "whatsapp_id", "updated_at").WherePK().Exec(c.Request.Context())
 	if h.audit != nil {
 		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
-		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "RESEND_NOTIFICATION", "notifications", noti.ID, nil, map[string]interface{}{"status": noti.DeliveryStatus, "user_id": noti.UserID, "error": func() string { if noti.DeliveryError != nil { return *noti.DeliveryError }; return "" }()}, ipAddress, userAgent)
+		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "RESEND_NOTIFICATION", "notifications", noti.ID, nil, map[string]interface{}{"status": noti.DeliveryStatus, "user_id": noti.UserID, "error": func() string {
+			if noti.DeliveryError != nil {
+				return *noti.DeliveryError
+			}
+			return ""
+		}()}, ipAddress, userAgent)
 	}
 
 	if sendErr != nil {

@@ -161,6 +161,7 @@ type PaymentDetail struct {
 	// Join
 	BillTypeName string `bun:"bill_type_name,scanonly" json:"bill_type_name,omitempty"`
 	Period       string `bun:"period,scanonly" json:"period,omitempty"`
+	AcademicYear string `bun:"academic_year,scanonly" json:"academic_year,omitempty"`
 }
 
 type Receipt struct {

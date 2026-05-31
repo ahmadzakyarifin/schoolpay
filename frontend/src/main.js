@@ -50,6 +50,19 @@ const getOfflineWritePolicy = (config) => {
         }
     }
 
+    const onlineOnlyWritePaths = [
+        'whatsapp',
+        'support/conversations',
+        'parent/support'
+    ]
+
+    if (matchesApiPath(pathOnly, onlineOnlyWritePaths)) {
+        return {
+            type: 'blocked',
+            message: 'Aksi ini memerlukan koneksi online.'
+        }
+    }
+
     const offlineQueuePaths = [
         'users',
         'students',
@@ -63,18 +76,6 @@ const getOfflineWritePolicy = (config) => {
         return {
             type: 'queued',
             message: 'Perubahan data disimpan sementara dan akan disinkronkan saat server online.'
-        }
-    }
-
-    const onlineOnlyWritePaths = [
-        'whatsapp',
-        'support/conversations'
-    ]
-
-    if (matchesApiPath(pathOnly, onlineOnlyWritePaths)) {
-        return {
-            type: 'blocked',
-            message: 'Aksi ini memerlukan koneksi online.'
         }
     }
 

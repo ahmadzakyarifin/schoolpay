@@ -27,6 +27,127 @@ func NewWhatsAppService() WhatsAppService {
 	return &whatsappService{}
 }
 
+type wahaWebhookHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type wahaWebhookConfig struct {
+	URL           string              `json:"url"`
+	Events        []string            `json:"events"`
+	CustomHeaders []wahaWebhookHeader `json:"customHeaders,omitempty"`
+}
+
+type wahaSessionConfig struct {
+	Proxy    interface{}         `json:"proxy"`
+	WebJS    map[string]bool     `json:"webjs,omitempty"`
+	Webhooks []wahaWebhookConfig `json:"webhooks,omitempty"`
+}
+
+type wahaSessionPayload struct {
+	Name   string            `json:"name"`
+	Config wahaSessionConfig `json:"config"`
+}
+
+func defaultWebhookConfig() wahaWebhookConfig {
+	webhookURL := os.Getenv("WHATSAPP_HOOK_URL")
+	if webhookURL == "" {
+		webhookURL = "http://schoolpay_be:8080/wa-webhook"
+	}
+
+	cfg := wahaWebhookConfig{
+		URL:    webhookURL,
+		Events: defaultWebhookEvents(),
+	}
+	if webhookSecret := os.Getenv("WAHA_WEBHOOK_SECRET"); webhookSecret != "" {
+		cfg.CustomHeaders = []wahaWebhookHeader{
+			{Name: "X-SchoolPay-Webhook-Secret", Value: webhookSecret},
+		}
+	}
+	return cfg
+}
+
+func defaultWebhookEvents() []string {
+	raw := strings.TrimSpace(os.Getenv("WHATSAPP_HOOK_EVENTS"))
+	if raw == "" {
+		return []string{"session.status", "message", "message.ack"}
+	}
+
+	events := []string{}
+	for _, item := range strings.Split(raw, ",") {
+		event := strings.TrimSpace(item)
+		if event != "" {
+			events = append(events, event)
+		}
+	}
+	if len(events) == 0 {
+		return []string{"session.status", "message", "message.ack"}
+	}
+	return events
+}
+
+func defaultSessionPayload() ([]byte, error) {
+	return json.Marshal(wahaSessionPayload{
+		Name: "default",
+		Config: wahaSessionConfig{
+			Proxy: nil,
+			WebJS: map[string]bool{
+				"tagsEventsOn": true,
+			},
+			Webhooks: []wahaWebhookConfig{defaultWebhookConfig()},
+		},
+	})
+}
+
+func setWAHAHeaders(req *http.Request, apiKey string) {
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("X-Api-Key", apiKey)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+}
+
+func doWAHAJSON(client *http.Client, method, url, apiKey string, payload []byte) (int, string, error) {
+	body := strings.NewReader("")
+	if payload != nil {
+		body = strings.NewReader(string(payload))
+	}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return 0, "", err
+	}
+	setWAHAHeaders(req, apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return resp.StatusCode, string(respBody), fmt.Errorf("waha returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return resp.StatusCode, string(respBody), nil
+}
+
+func configureDefaultSession(client *http.Client, wahaURL, apiKey string) error {
+	payload, err := defaultSessionPayload()
+	if err != nil {
+		return err
+	}
+
+	if _, _, err := doWAHAJSON(client, http.MethodPut, fmt.Sprintf("%s/api/sessions/default", wahaURL), apiKey, payload); err == nil {
+		return nil
+	}
+
+	status, _, err := doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/sessions/", wahaURL), apiKey, payload)
+	if err == nil || status == http.StatusConflict {
+		return nil
+	}
+	return err
+}
+
 func (s *whatsappService) GetStatus() (string, error) {
 	wahaURL := os.Getenv("WAHA_URL")
 	apiKey := os.Getenv("WAHA_API_KEY")
@@ -87,25 +208,22 @@ func (s *whatsappService) StartSession() error {
 	apiKey := os.Getenv("WAHA_API_KEY")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	// Try to start the default session
-	payload := strings.NewReader(`{"name": "default", "config": {"proxy": null}}`)
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/sessions/start", wahaURL), payload)
-	if err != nil {
-		return err
+	if err := configureDefaultSession(client, wahaURL, apiKey); err != nil {
+		fmt.Printf("[WA-DEBUG] Failed to configure default session before start: %v\n", err)
 	}
 
-	req.Header.Set("X-Api-Key", apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("failed to start WAHA session, status code: %d", resp.StatusCode)
+	status, _, err := doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/sessions/default/start", wahaURL), apiKey, nil)
+	if err == nil || status == http.StatusConflict {
+		return nil
 	}
 
-	return nil
+	payload, _ := defaultSessionPayload()
+	status, _, err = doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/sessions/start", wahaURL), apiKey, payload)
+	if err == nil || status == http.StatusConflict {
+		return nil
+	}
+
+	return err
 }
 
 func (s *whatsappService) StopSession() error {
@@ -113,20 +231,13 @@ func (s *whatsappService) StopSession() error {
 	apiKey := os.Getenv("WAHA_API_KEY")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/sessions/stop", wahaURL), strings.NewReader(`{"name": "default"}`))
-	if err != nil {
-		return err
+	status, _, err := doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/sessions/default/stop", wahaURL), apiKey, nil)
+	if err == nil || status == http.StatusConflict || status == http.StatusNotFound {
+		return nil
 	}
 
-	req.Header.Set("X-Api-Key", apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	return nil
+	_, _, err = doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/sessions/stop", wahaURL), apiKey, []byte(`{"name":"default"}`))
+	return err
 }
 
 func (s *whatsappService) LogoutSession() error {
@@ -233,53 +344,36 @@ func (s *whatsappService) GetQR() ([]byte, error) {
 func (s *whatsappService) RegisterWebhook() error {
 	wahaURL := os.Getenv("WAHA_URL")
 	apiKey := os.Getenv("WAHA_API_KEY")
-	webhookURL := os.Getenv("WHATSAPP_HOOK_URL")
-	if webhookURL == "" {
-		webhookURL = "http://schoolpay_be:8080/wa-webhook"
+	webhookCfg := defaultWebhookConfig()
+	webhookPayload, err := json.Marshal(webhookCfg)
+	if err != nil {
+		return err
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	// Retry up to 5 times with delay
 	for i := 0; i < 5; i++ {
-		fmt.Printf("[WA-DEBUG] Registering Webhook to %s (attempt %d/5)...\n", webhookURL, i+1)
+		fmt.Printf("[WA-DEBUG] Registering Webhook to %s (attempt %d/5)...\n", webhookCfg.URL, i+1)
 
-		payload := strings.NewReader(fmt.Sprintf(`{
-			"url": "%s",
-			"events": ["session.status", "message", "message.ack"],
-			"hmac": null
-		}`, webhookURL))
-
-		req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/webhooks", wahaURL), payload)
-		if err != nil {
-			time.Sleep(5 * time.Second)
-			continue
+		status, _, err := doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/webhooks", wahaURL), apiKey, webhookPayload)
+		if err == nil || status == http.StatusConflict {
+			fmt.Println("[WA-DEBUG] Webhook Registered Successfully!")
+			return nil
 		}
 
-		req.Header.Set("X-Api-Key", apiKey)
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-		req.Header.Set("Content-Type", "application/json")
+		if status == http.StatusNotFound {
+			if err := configureDefaultSession(client, wahaURL, apiKey); err == nil {
+				fmt.Println("[WA-DEBUG] Webhook stored in default session configuration.")
+				return nil
+			}
+		}
 
-		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Printf("[WA-DEBUG] Registration failed: %v, retrying...\n", err)
 			time.Sleep(5 * time.Second)
 			continue
 		}
-
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-			fmt.Println("[WA-DEBUG] Webhook Registered Successfully!")
-			resp.Body.Close()
-			return nil
-		}
-
-		if resp.StatusCode == http.StatusNotFound {
-			fmt.Println("[WA-DEBUG] Webhook API not found. WAHA Core might not support it.")
-			resp.Body.Close()
-			return nil
-		}
-
-		resp.Body.Close()
 		time.Sleep(5 * time.Second)
 	}
 

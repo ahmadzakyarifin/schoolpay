@@ -22,12 +22,12 @@ type Config struct {
 	SMTPPass          string
 	WAHAURL           string
 	WAHAApiKey        string
+	WAHAWebhookSecret string
 	FrontendURL       string
 	MidtransServerKey string
 	MidtransClientKey string
 	MidtransIsSandbox bool
 	RedisAddr         string
-	AdminPhone        string
 }
 
 func LoadConfig() *Config {
@@ -54,16 +54,25 @@ func LoadConfig() *Config {
 		SMTPPass:          os.Getenv("SMTP_PASS"),
 		WAHAURL:           os.Getenv("WAHA_URL"),
 		WAHAApiKey:        os.Getenv("WAHA_API_KEY"),
+		WAHAWebhookSecret: os.Getenv("WAHA_WEBHOOK_SECRET"),
 		FrontendURL:       os.Getenv("FRONTEND_URL"),
 		MidtransServerKey: os.Getenv("MIDTRANS_SERVER_KEY"),
 		MidtransClientKey: os.Getenv("MIDTRANS_CLIENT_KEY"),
 		MidtransIsSandbox: os.Getenv("MIDTRANS_IS_SANDBOX") == "true",
 		RedisAddr:         os.Getenv("REDIS_ADDR"),
-		AdminPhone:        os.Getenv("ADMIN_PHONE"),
 	}
 
 	if cfg.DBHost == "" || cfg.DBUser == "" || cfg.DBName == "" || cfg.JWTSecret == "" {
 		log.Fatal("CRITICAL: DB_HOST, DB_USER, DB_NAME, and JWT_SECRET must be set in environment variables")
+	}
+	if cfg.RedisAddr == "" {
+		if cfg.AppEnv == "production" {
+			log.Fatal("CRITICAL: REDIS_ADDR must be set in environment variables")
+		}
+		cfg.RedisAddr = "127.0.0.1:6379"
+	}
+	if cfg.AppEnv == "production" && cfg.WAHAWebhookSecret == "" {
+		log.Fatal("CRITICAL: WAHA_WEBHOOK_SECRET must be set in production")
 	}
 
 	return cfg

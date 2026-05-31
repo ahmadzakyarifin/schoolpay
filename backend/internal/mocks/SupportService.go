@@ -119,6 +119,90 @@ func (_m *SupportService) Messages(ctx context.Context, conversationID uint) ([]
 	return r0, r1
 }
 
+// ParentConversation provides a mock function with given fields: ctx, parentID
+func (_m *SupportService) ParentConversation(ctx context.Context, parentID uint) (*domain.Conversation, error) {
+	ret := _m.Called(ctx, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParentConversation")
+	}
+
+	var r0 *domain.Conversation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint) (*domain.Conversation, error)); ok {
+		return rf(ctx, parentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint) *domain.Conversation); ok {
+		r0 = rf(ctx, parentID)
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*domain.Conversation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint) error); ok {
+		r1 = rf(ctx, parentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ParentMessages provides a mock function with given fields: ctx, parentID
+func (_m *SupportService) ParentMessages(ctx context.Context, parentID uint) ([]domain.Message, error) {
+	ret := _m.Called(ctx, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParentMessages")
+	}
+
+	var r0 []domain.Message
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint) ([]domain.Message, error)); ok {
+		return rf(ctx, parentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint) []domain.Message); ok {
+		r0 = rf(ctx, parentID)
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).([]domain.Message)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint) error); ok {
+		r1 = rf(ctx, parentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ParentSendMessage provides a mock function with given fields: ctx, parent, topic, message
+func (_m *SupportService) ParentSendMessage(ctx context.Context, parent *user_authdomain.User, topic string, message string) (*domain.Conversation, error) {
+	ret := _m.Called(ctx, parent, topic, message)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ParentSendMessage")
+	}
+
+	var r0 *domain.Conversation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *user_authdomain.User, string, string) (*domain.Conversation, error)); ok {
+		return rf(ctx, parent, topic, message)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *user_authdomain.User, string, string) *domain.Conversation); ok {
+		r0 = rf(ctx, parent, topic, message)
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*domain.Conversation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *user_authdomain.User, string, string) error); ok {
+		r1 = rf(ctx, parent, topic, message)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // RecordIncoming provides a mock function with given fields: ctx, phone, message, parent
 func (_m *SupportService) RecordIncoming(ctx context.Context, phone string, message string, parent *user_authdomain.User) (*domain.Conversation, error) {
 	ret := _m.Called(ctx, phone, message, parent)

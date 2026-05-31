@@ -254,7 +254,6 @@ func (h *DashboardHandler) GetStats(c *gin.Context) {
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
 
-
 	if period == "custom" && startDateStr != "" && endDateStr != "" {
 		s, _ := time.Parse("2006-01-02", startDateStr)
 		e, _ := time.Parse("2006-01-02", endDateStr)
@@ -490,7 +489,7 @@ func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 	q := h.db.NewSelect().
 		TableExpr("notifications AS n").
 		ColumnExpr("n.id, s.name as student_name, u.name as recipient_name, u.phone_number as recipient_phone, u.email as recipient_email, n.title, n.message, n.delivery_status, n.delivery_error, n.created_at, n.updated_at").
-		ColumnExpr("CASE WHEN n.whatsapp_id IS NULL OR n.whatsapp_id = '' THEN 'email' ELSE 'whatsapp' END as channel").
+		ColumnExpr("COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NULL OR n.whatsapp_id = '' THEN 'email' ELSE 'whatsapp' END) as channel").
 		Join("JOIN users u ON n.user_id = u.id").
 		Join("LEFT JOIN students s ON s.parent_id = u.id")
 
@@ -517,9 +516,9 @@ func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 	}
 
 	if channel == "whatsapp" {
-		q.Where("n.whatsapp_id IS NOT NULL AND n.whatsapp_id != ''")
+		q.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'whatsapp'")
 	} else {
-		q.Where("n.whatsapp_id IS NULL OR n.whatsapp_id = ''")
+		q.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'email'")
 	}
 
 	type CommDetail struct {
@@ -545,8 +544,6 @@ func (h *DashboardHandler) GetCommunicationDetails(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": list})
 }
-
-
 
 func dueStatusText(dueDate time.Time) string {
 	now := time.Now()

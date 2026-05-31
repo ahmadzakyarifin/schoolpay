@@ -24,6 +24,7 @@ type User struct {
 	Occupation   *string           `bun:"occupation" json:"occupation" binding:"-"`
 	Income       *string           `bun:"income" json:"income" binding:"-"`
 	IsActive     bool              `bun:"is_active,default:true" json:"is_active"`
+	HasPassword  bool              `bun:",scanonly" json:"has_password"`
 	Relation     string            `bun:",scanonly" json:"relation,omitempty"`
 	StudentCount int               `bun:",scanonly" json:"student_count"`
 	StudentNames *string           `bun:",scanonly" json:"student_names"`
@@ -32,4 +33,3 @@ type User struct {
 	UpdatedAt    time.Time         `bun:"updated_at,nullzero,notnull,default:current_timestamp" json:"updated_at"`
 	DeletedAt    *time.Time        `bun:"deleted_at,soft_delete,nullzero" json:"deleted_at,omitempty"`
 }
-

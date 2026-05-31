@@ -230,7 +230,14 @@ func (r *studentRepo) GetStudentsByParentID(ctx context.Context, parentID uint) 
 	var students []domain.Student
 	err := r.db.NewSelect().
 		Model(&students).
-		Where("parent_id = ?", parentID).
+		ColumnExpr("s.*").
+		ColumnExpr("c.name as class_name").
+		ColumnExpr("m.name as major_name").
+		Join("LEFT JOIN classes c ON s.class_id = c.id AND c.deleted_at IS NULL").
+		Join("LEFT JOIN majors m ON m.id = COALESCE(c.major_id, s.major_id) AND m.deleted_at IS NULL").
+		Where("s.parent_id = ?", parentID).
+		Where("s.deleted_at IS NULL").
+		Order("s.name ASC").
 		Scan(ctx)
 	return students, err
 }

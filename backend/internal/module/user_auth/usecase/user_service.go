@@ -366,6 +366,7 @@ func (s *userService) ToggleStatus(ctx context.Context, id uint) error {
 }
 
 func (s *userService) ResendNotification(ctx context.Context, id uint, channel string, cfg *config.Config) error {
+	channel = normalizeActivationChannel(channel)
 	user, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -378,10 +379,13 @@ func (s *userService) ResendNotification(ctx context.Context, id uint, channel s
 	if user.Role == "parent" && user.StudentCount == 0 {
 		return fmt.Errorf("Gagal: Wali Murid %s belum terhubung ke siswa manapun", user.Name)
 	}
+	if userHasPassword(user) {
+		return fmt.Errorf("Gagal: Akun %s sudah aktif dan sudah memiliki password. Gunakan fitur reset password jika diperlukan", user.Name)
+	}
 
 	if s.audit != nil {
 		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESEND_NOTIFICATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
+		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESEND_ACTIVATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
 	}
 
 	s.jobChan <- userNotifyJob{user: user, cfg: cfg, channel: channel}
@@ -396,6 +400,7 @@ type BulkResendResult struct {
 }
 
 func (s *userService) BulkResendNotification(ctx context.Context, ids []uint, channel string, cfg *config.Config) (*BulkResendResult, error) {
+	channel = normalizeActivationChannel(channel)
 	result := &BulkResendResult{
 		Total:  len(ids),
 		Errors: []string{},
@@ -420,17 +425,37 @@ func (s *userService) BulkResendNotification(ctx context.Context, ids []uint, ch
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: Wali Murid belum memiliki data anak", user.Name))
 			continue
 		}
+		if userHasPassword(user) {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: Akun sudah aktif dan sudah memiliki password", user.Name))
+			continue
+		}
 
 		// Jika lolos, kirim ke job queue
 		result.Sent++
 		if s.audit != nil {
 			userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.db, userIDMeta, userNameMeta, roleMeta, "BULK_RESEND_NOTIFICATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
+			_ = s.audit.Log(ctx, s.db, userIDMeta, userNameMeta, roleMeta, "BULK_RESEND_ACTIVATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
 		}
 		s.jobChan <- userNotifyJob{user: user, cfg: cfg, channel: channel}
 	}
 
 	return result, nil
+}
+
+func userHasPassword(user *domain.User) bool {
+	return user != nil && user.PasswordHash != nil && strings.TrimSpace(*user.PasswordHash) != ""
+}
+
+func normalizeActivationChannel(channel string) string {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "email":
+		return "email"
+	case "whatsapp", "wa":
+		return "whatsapp"
+	default:
+		return ""
+	}
 }
 
 func (s *userService) ExportExcel(ctx context.Context, search, role, filter, status string) ([]byte, error) {
@@ -538,7 +563,6 @@ func (s *userService) ExportExcel(ctx context.Context, search, role, filter, sta
 	return buf.Bytes(), nil
 }
 
-
 func (s *userService) GetNotifications(ctx context.Context, userID uint) ([]notificationdomain.Notification, error) {
 	return s.notiRepo.GetByUserID(ctx, userID)
 }
@@ -576,10 +600,9 @@ func (s *userService) notificationWorker() {
 
 		link := fmt.Sprintf("%s/activate?token=%s", strings.TrimSuffix(job.cfg.FrontendURL, "/"), token)
 
-		// Tambahkan nama anak jika ada
 		childInfo := ""
 		if fullUser.StudentNames != nil && *fullUser.StudentNames != "" {
-			childInfo = fmt.Sprintf("Akun ini terhubung dengan putra/putri Anda: *%s*\n\n", *fullUser.StudentNames)
+			childInfo = fmt.Sprintf("Akun ini terhubung dengan putra/putri Anda:\n%s\n\n", formatActivationStudentList(*fullUser.StudentNames))
 		}
 
 		message := fmt.Sprintf(
@@ -609,6 +632,7 @@ func (s *userService) notificationWorker() {
 				Title:          "Akses Akun SchoolPay",
 				Message:        message,
 				Type:           "auth",
+				Channel:        "email",
 				DeliveryStatus: status,
 				DeliveryError:  deliveryErr,
 			})
@@ -637,6 +661,7 @@ func (s *userService) notificationWorker() {
 				Title:          "Akses Akun SchoolPay",
 				Message:        message,
 				Type:           "auth",
+				Channel:        "whatsapp",
 				WhatsappID:     whatsappID,
 				DeliveryStatus: status,
 				DeliveryError:  deliveryErr,
@@ -644,6 +669,26 @@ func (s *userService) notificationWorker() {
 		}
 	}
 }
+
+func formatActivationStudentList(raw string) string {
+	parts := strings.Split(raw, "||")
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if split := strings.SplitN(part, "::", 2); len(split) == 2 {
+			part = split[1]
+		}
+		lines = append(lines, fmt.Sprintf("• *%s*", part))
+	}
+	if len(lines) == 0 {
+		return "• *Data siswa terhubung*"
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (s *userService) GetDependencyInfo(ctx context.Context, id uint) (map[string]interface{}, error) {
 	user, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -698,4 +743,3 @@ func (s *userService) CheckUnique(ctx context.Context, field string, value strin
 
 	return true, nil
 }
-

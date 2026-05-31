@@ -721,9 +721,23 @@ func (s *studentService) notificationWorker() {
 			link := fmt.Sprintf("%s/activate?token=%s", strings.TrimSuffix(s.cfg.FrontendURL, "/"), token)
 			passInfo := ""
 			if job.rawPassword != "" {
-				passInfo = fmt.Sprintf("\n🔑 *Password Sementara:* %s\n", job.rawPassword)
+				passInfo = fmt.Sprintf("\n• Password sementara: *%s*", job.rawPassword)
 			}
-			msg := fmt.Sprintf("📢 *AKTIVASI AKUN SCHOOLPAY*\n\nHalo *%s*,\n\nAkun Anda telah didaftarkan untuk siswa *%s*. Silakan aktifkan akun melalui link berikut:\n🔗 %s\n%s\nTerima kasih.", job.user.Name, job.studentName, link, passInfo)
+			msg := strings.Join([]string{
+				"📢 *AKTIVASI AKUN SCHOOLPAY*",
+				"",
+				fmt.Sprintf("Halo *%s*,", job.user.Name),
+				"",
+				"Akun Anda telah didaftarkan dengan rincian:",
+				"",
+				fmt.Sprintf("• Siswa: *%s*", job.studentName),
+				fmt.Sprintf("• Link aktivasi: %s%s", link, passInfo),
+				"",
+				"Tautan berlaku selama 7 hari.",
+				"Silakan hubungi Admin Sekolah jika mengalami kendala.",
+				"",
+				"Terima kasih.",
+			}, "\n")
 			status := "sent"
 			var deliveryErr *string
 			var whatsappID *string
@@ -742,6 +756,7 @@ func (s *studentService) notificationWorker() {
 				Title:          "Aktivasi Akun SchoolPay",
 				Message:        msg,
 				Type:           "auth",
+				Channel:        "whatsapp",
 				WhatsappID:     whatsappID,
 				DeliveryStatus: status,
 				DeliveryError:  deliveryErr,
@@ -792,4 +807,3 @@ func (s *studentService) CheckUnique(ctx context.Context, field string, value st
 
 	return true, nil
 }
-

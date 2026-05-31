@@ -14,6 +14,7 @@ type Notification struct {
 	Title          string     `bun:"title" json:"title"`
 	Message        string     `bun:"message" json:"message"`
 	Type           string     `bun:"type" json:"type"`
+	Channel        string     `bun:"channel,default:system" json:"channel"`
 	IsRead         bool       `bun:"is_read,default:false" json:"is_read"`
 	WhatsappID     *string    `bun:"whatsapp_id" json:"whatsapp_id"`
 	DeliveryStatus string     `bun:"delivery_status,default:pending" json:"delivery_status"`

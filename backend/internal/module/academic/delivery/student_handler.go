@@ -229,6 +229,42 @@ func (h *StudentHandler) GetMyStudents(c *gin.Context) {
 	utils.SuccessResponse(c, http.StatusOK, "berhasil", list)
 }
 
+func (h *StudentHandler) GetMyStudentClassHistory(c *gin.Context) {
+	idStr := c.Param("id")
+	id, _ := strconv.Atoi(idStr)
+	if id <= 0 {
+		utils.ErrorResponse(c, http.StatusBadRequest, "ID siswa tidak valid")
+		return
+	}
+
+	userID, _ := c.Get("user_id")
+	students, err := h.s.GetStudentsByParentID(c.Request.Context(), userID.(uint))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal memverifikasi data anak: "+err.Error())
+		return
+	}
+
+	owned := false
+	for _, student := range students {
+		if student.ID == uint(id) {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		utils.ErrorResponse(c, http.StatusForbidden, "siswa tidak terhubung dengan akun wali ini")
+		return
+	}
+
+	list, err := h.s.GetClassHistory(c.Request.Context(), uint(id))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal mengambil riwayat kelas: "+err.Error())
+		return
+	}
+
+	utils.SuccessResponse(c, http.StatusOK, "berhasil", list)
+}
+
 func (h *StudentHandler) GetByParentID(c *gin.Context) {
 	idStr := c.Param("id")
 	id, _ := strconv.Atoi(idStr)
@@ -372,4 +408,3 @@ func (h *StudentHandler) CheckUnique(c *gin.Context) {
 		"is_unique": isUnique,
 	})
 }
-

@@ -15,6 +15,15 @@ const supportService = {
   },
   close(id) {
     return axios.patch(`support/conversations/${id}/close`)
+  },
+  getParentConversation() {
+    return axios.get('parent/support/conversation')
+  },
+  getParentMessages() {
+    return axios.get('parent/support/messages')
+  },
+  sendParentMessage(payload) {
+    return axios.post('parent/support/messages', payload)
   }
 }
 

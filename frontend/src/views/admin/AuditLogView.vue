@@ -288,7 +288,20 @@ const humanizeAction = (action) => {
     EXPORT_GLOBAL_FINANCE_REPORT: 'Export Laporan Keuangan',
     CREATE_PAYMENT_INTENT: 'Membuat Tagihan Bayar',
     PROCESS_PAYMENT: 'Memproses Pembayaran',
-    GATEWAY_PAYMENT_TO_DEPOSIT: 'Dana Gateway ke Saldo'
+    GATEWAY_PAYMENT_TO_DEPOSIT: 'Dana Gateway ke Saldo',
+    SEND_MANUAL_BILL_REMINDER: 'Kirim Pengingat Tagihan',
+    RESEND_NOTIFICATION: 'Kirim Ulang Notifikasi',
+    BULK_RESEND_NOTIFICATION: 'Kirim Ulang Massal',
+    RESEND_ACTIVATION: 'Kirim Ulang Aktivasi',
+    BULK_RESEND_ACTIVATION: 'Kirim Aktivasi Massal',
+    SEND_WHATSAPP_CHAT: 'Balas Chat WhatsApp',
+    RESTART_WHATSAPP_SESSION: 'Restart Sesi WhatsApp',
+    LOGOUT_WHATSAPP_SESSION: 'Logout Sesi WhatsApp',
+    ASSIGN_SUPPORT_CHAT: 'Ambil Tiket CS',
+    CLOSE_SUPPORT_CHAT: 'Tutup Tiket CS',
+    REPLY_SUPPORT_CHAT: 'Balasan CS/Admin',
+    RECORD_INCOMING_SUPPORT_CHAT: 'Pesan Masuk CS',
+    PARENT_SUPPORT_MESSAGE: 'Pesan Parent ke CS'
   }
   return dict[action] || action
 }
@@ -307,7 +320,10 @@ const humanizeEntity = (entity) => {
     payments: 'Pembayaran',
     finance_reports: 'Laporan Keuangan',
     notifications: 'Notifikasi',
-    auth: 'Autentikasi'
+    auth: 'Autentikasi',
+    whatsapp: 'WhatsApp',
+    support_conversations: 'Percakapan CS',
+    support_messages: 'Pesan CS'
   }
   return dict[entity] || entity
 }

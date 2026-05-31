@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,9 +16,11 @@ import (
 	supportusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/support/usecase"
 	userauthdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
+	webhookdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/domain"
 	webhookrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/repository"
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/redis/go-redis/v9"
 )
 
 type WebhookService interface {
@@ -35,6 +38,7 @@ type webhookService struct {
 	hub      *websocket.Hub
 	support  supportusecase.SupportService
 	cfg      *config.Config
+	redis    *redis.Client
 }
 
 func NewWebhookService(
@@ -48,8 +52,13 @@ func NewWebhookService(
 	hub *websocket.Hub,
 	support supportusecase.SupportService,
 	cfg *config.Config,
+	redisClients ...*redis.Client,
 ) WebhookService {
-	return &webhookService{repo: repo, wa: wa, notiRepo: notiRepo, sbRepo: sbRepo, payRepo: payRepo, stuRepo: stuRepo, userRepo: userRepo, hub: hub, support: support, cfg: cfg}
+	var redisClient *redis.Client
+	if len(redisClients) > 0 {
+		redisClient = redisClients[0]
+	}
+	return &webhookService{repo: repo, wa: wa, notiRepo: notiRepo, sbRepo: sbRepo, payRepo: payRepo, stuRepo: stuRepo, userRepo: userRepo, hub: hub, support: support, cfg: cfg, redis: redisClient}
 }
 
 func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.RawMessage) error {
@@ -59,6 +68,21 @@ func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.Raw
 	}
 
 	event, _ := data["event"].(string)
+	eventID := extractWebhookEventID(event, data)
+	if s.repo != nil {
+		_ = s.repo.Create(ctx, &webhookdomain.WebhookLog{
+			Provider: "waha",
+			EventID:  eventID,
+			Payload:  payload,
+			Status:   "received",
+		})
+	}
+	defer func() {
+		if s.repo != nil {
+			_ = s.repo.UpdateStatus(ctx, eventID, "processed")
+		}
+	}()
+
 	if event == "session.status" {
 		p, ok := data["payload"].(map[string]interface{})
 		if ok {
@@ -66,9 +90,9 @@ func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.Raw
 
 			// Broadcast status change to all clients
 			if s.hub != nil {
-				s.hub.Broadcast("WA_STATUS_CHANGED", map[string]interface{}{
+				s.hub.BroadcastToRoles("WA_STATUS_CHANGED", map[string]interface{}{
 					"status": status,
-				})
+				}, "admin")
 			}
 
 			if status == "STOPPED" {
@@ -88,37 +112,111 @@ func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.Raw
 	if event == "message.ack" {
 		p, ok := data["payload"].(map[string]interface{})
 		if ok {
-			var messageID string
-			if idObj, isMap := p["id"].(map[string]interface{}); isMap {
-				if serialized, hasSerial := idObj["_serialized"].(string); hasSerial {
-					messageID = serialized
-				}
-			} else if idStr, isStr := p["id"].(string); isStr {
-				messageID = idStr
-			}
-
-			if ackVal, ok := p["ack"].(float64); ok && messageID != "" {
-				status := "SENT"
-				switch int(ackVal) {
-				case 2:
-					status = "DELIVERED"
-				case 3, 4:
-					status = "READ"
-				}
+			messageID := extractWAHAMessageID(p)
+			status := deliveryStatusFromWAHAAck(p)
+			if status != "" && messageID != "" {
 				fmt.Printf("[WA-WEBHOOK] Message ACK: %s -> %s\n", messageID, status)
 				_ = s.notiRepo.UpdateStatusByWhatsappID(ctx, messageID, status)
 				if s.hub != nil {
-					s.hub.Broadcast("NOTIFICATION_STATUS_CHANGED", map[string]interface{}{
+					s.hub.BroadcastToRoles("NOTIFICATION_STATUS_CHANGED", map[string]interface{}{
 						"message_id": messageID,
 						"status":     status,
 						"channel":    "whatsapp",
-					})
+					}, "admin")
 				}
 			}
 		}
 	}
 
 	return nil
+}
+
+func extractWebhookEventID(event string, data map[string]interface{}) string {
+	for _, key := range []string{"id", "event_id", "eventId"} {
+		if value, ok := data[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	if payload, ok := data["payload"].(map[string]interface{}); ok {
+		if messageID := extractWAHAMessageID(payload); messageID != "" {
+			return fmt.Sprintf("%s:%s", event, messageID)
+		}
+	}
+	if event == "" {
+		event = "unknown"
+	}
+	return fmt.Sprintf("%s:%d", event, time.Now().UnixNano())
+}
+
+func extractWAHAMessageID(payload map[string]interface{}) string {
+	if idStr, isStr := payload["id"].(string); isStr {
+		return idStr
+	}
+	if idObj, isMap := payload["id"].(map[string]interface{}); isMap {
+		if serialized, hasSerial := idObj["_serialized"].(string); hasSerial {
+			return serialized
+		}
+		if id, hasID := idObj["id"].(string); hasID {
+			return id
+		}
+	}
+	if dataObj, isMap := payload["_data"].(map[string]interface{}); isMap {
+		return extractWAHAMessageID(dataObj)
+	}
+	return ""
+}
+
+func deliveryStatusFromWAHAAck(payload map[string]interface{}) string {
+	if ackName, ok := payload["ackName"].(string); ok {
+		switch strings.ToUpper(strings.TrimSpace(ackName)) {
+		case "ERROR":
+			return "FAILED"
+		case "PENDING":
+			return "PENDING"
+		case "SERVER":
+			return "SENT"
+		case "DEVICE":
+			return "DELIVERED"
+		case "READ", "PLAYED":
+			return "READ"
+		}
+	}
+
+	ack, ok := numericAck(payload["ack"])
+	if !ok {
+		return ""
+	}
+	switch ack {
+	case -1:
+		return "FAILED"
+	case 0:
+		return "PENDING"
+	case 1:
+		return "SENT"
+	case 2:
+		return "DELIVERED"
+	case 3, 4:
+		return "READ"
+	default:
+		return ""
+	}
+}
+
+func numericAck(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	case json.Number:
+		i, err := strconv.Atoi(v.String())
+		return i, err == nil
+	case string:
+		i, err := strconv.Atoi(strings.TrimSpace(v))
+		return i, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *webhookService) handleIncomingMessage(ctx context.Context, payload map[string]interface{}) {
@@ -129,6 +227,11 @@ func (s *webhookService) handleIncomingMessage(ctx context.Context, payload map[
 	}
 
 	cleanPhone := strings.Split(from, "@")[0]
+	if !s.allowIncomingBotMessage(ctx, cleanPhone) {
+		s.sendRateLimitNotice(ctx, from, cleanPhone)
+		return
+	}
+
 	user, err := s.userRepo.FindByPhone(ctx, cleanPhone)
 	if err != nil || user == nil {
 		s.createSupportTicket(ctx, from, body, nil)
@@ -147,15 +250,51 @@ func (s *webhookService) handleIncomingMessage(ctx context.Context, payload map[
 		s.handleCekPembayaran(ctx, from, user)
 	case strings.Contains(cmd, "cara bayar"):
 		s.sendInstruction(from)
-	case strings.Contains(cmd, "cs") || strings.Contains(cmd, "admin"):
+	case wantsHumanSupport(cmd):
 		s.createSupportTicket(ctx, from, body, user)
 	default:
 		s.createSupportTicket(ctx, from, body, user)
 	}
 }
 
+func (s *webhookService) allowIncomingBotMessage(ctx context.Context, phone string) bool {
+	if s.redis == nil || strings.TrimSpace(phone) == "" {
+		return true
+	}
+	key := "rate_limit:bot_incoming:" + phone
+	count, err := s.redis.Incr(ctx, key).Result()
+	if err != nil {
+		return true
+	}
+	if count == 1 {
+		_ = s.redis.Expire(ctx, key, time.Minute).Err()
+	}
+	return count <= 12
+}
+
+func (s *webhookService) sendRateLimitNotice(ctx context.Context, to, phone string) {
+	if s.redis != nil {
+		key := "rate_limit:bot_notice:" + phone
+		ok, err := s.redis.SetNX(ctx, key, "1", time.Minute).Result()
+		if err == nil && !ok {
+			return
+		}
+	}
+	_ = s.wa.SendChatMessage(to, "Pesan Anda terlalu sering masuk. Mohon tunggu sebentar, lalu kirim kembali atau buka portal parent untuk bantuan CS.")
+}
+
+func wantsHumanSupport(cmd string) bool {
+	return strings.Contains(cmd, "cs") ||
+		strings.Contains(cmd, "admin") ||
+		strings.Contains(cmd, "operator") ||
+		strings.Contains(cmd, "manusia") ||
+		strings.Contains(cmd, "bantuan") ||
+		strings.Contains(cmd, "komplain") ||
+		strings.Contains(cmd, "keluhan")
+}
+
 func (s *webhookService) sendMenu(to string, name string) {
-	msg := fmt.Sprintf("Halo Bapak/Ibu *%s*,\nSelamat datang di *Layanan Bot SchoolPay* 🎓\n\nSilakan pilih menu:\n1. *Cek Tagihan*\n2. *Cek Tunggakan*\n3. *Cek Pembayaran*\n4. *Cara Bayar*\n5. *CS/Admin*", name)
+	msg := fmt.Sprintf("Halo Bapak/Ibu *%s*,\nSelamat datang di *Layanan Bot SchoolPay* 🎓\n\nSilakan pilih menu:\n1. *Cek Tagihan*\n2. *Cek Tunggakan*\n3. *Cek Pembayaran*\n4. *Cara Bayar*\n5. *CS/Admin*\n\nKetik salah satu menu di atas.\nKetik *CS* untuk bantuan admin.", name)
 	s.wa.SendChatMessage(to, msg)
 }
 
@@ -259,14 +398,17 @@ func (s *webhookService) handleCekPembayaran(ctx context.Context, to string, use
 }
 
 func (s *webhookService) sendInstruction(to string) {
-	msg := "💳 *INSTRUKSI PEMBAYARAN*\n1. *Portal Parent*\n2. *Transfer Bank ABC*\n3. *Scan QRIS*"
+	msg := "💳 *INSTRUKSI PEMBAYARAN*\n1. Masuk ke *Portal Parent*.\n2. Pilih tagihan yang belum jatuh tempo.\n3. Bayar melalui metode yang tersedia.\n\nJika tagihan sudah lewat jatuh tempo, pembayaran dilakukan melalui Admin Sekolah.\nKetik *CS* jika perlu bantuan."
 	s.wa.SendChatMessage(to, msg)
 }
 
 func (s *webhookService) createSupportTicket(ctx context.Context, to, body string, user *userauthdomain.User) {
 	if s.support != nil {
 		if conv, err := s.support.RecordIncoming(ctx, to, body, user); err == nil && s.hub != nil {
-			s.hub.Broadcast("SUPPORT_CHAT_UPDATED", map[string]interface{}{"conversation_id": conv.ID, "phone": conv.PhoneNumber, "message": body})
+			s.hub.BroadcastToRoles("SUPPORT_CHAT_UPDATED", map[string]interface{}{"conversation_id": conv.ID, "phone": conv.PhoneNumber}, "admin")
+			if conv.ParentID != nil {
+				s.hub.BroadcastToUser("SUPPORT_CHAT_UPDATED", map[string]interface{}{"conversation_id": conv.ID, "parent_id": *conv.ParentID}, *conv.ParentID)
+			}
 		}
 	}
 	if user == nil {

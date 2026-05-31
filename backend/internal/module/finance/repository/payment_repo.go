@@ -58,7 +58,7 @@ func (r *paymentRepo) FindDetailsByPaymentID(ctx context.Context, paymentID uint
 	err := r.db.NewSelect().
 		Model(&list).
 		ColumnExpr("pd.*").
-		ColumnExpr("COALESCE(NULLIF(sb.name, ''), bt.name) as bill_type_name, COALESCE(sb.period, '') as period").
+		ColumnExpr("COALESCE(NULLIF(sb.name, ''), bt.name) as bill_type_name, COALESCE(sb.period, '') as period, COALESCE(sb.academic_year, '') as academic_year").
 		Join("JOIN student_bills sb ON pd.student_bill_id = sb.id").
 		Join("JOIN bill_types bt ON sb.bill_type_id = bt.id").
 		Where("pd.payment_id = ?", paymentID).

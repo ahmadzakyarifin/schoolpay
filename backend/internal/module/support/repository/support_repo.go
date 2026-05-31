@@ -10,6 +10,7 @@ import (
 
 type SupportRepo interface {
 	FindOpenByPhone(ctx context.Context, phone string) (*domain.Conversation, error)
+	FindOpenByParentID(ctx context.Context, parentID uint) (*domain.Conversation, error)
 	CreateConversation(ctx context.Context, db bun.IDB, c *domain.Conversation) error
 	UpdateConversationPreview(ctx context.Context, db bun.IDB, id uint, lastMessage string, unreadDelta int) error
 	CreateMessage(ctx context.Context, db bun.IDB, m *domain.Message) error
@@ -28,6 +29,20 @@ func NewSupportRepo(db *bun.DB) SupportRepo { return &supportRepo{db: db} }
 func (r *supportRepo) FindOpenByPhone(ctx context.Context, phone string) (*domain.Conversation, error) {
 	var c domain.Conversation
 	err := r.db.NewSelect().Model(&c).Where("phone_number = ? AND status IN ('open', 'pending')", phone).Order("updated_at DESC").Limit(1).Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *supportRepo) FindOpenByParentID(ctx context.Context, parentID uint) (*domain.Conversation, error) {
+	var c domain.Conversation
+	err := r.db.NewSelect().
+		Model(&c).
+		Where("parent_id = ? AND status IN ('open', 'pending')", parentID).
+		Order("updated_at DESC").
+		Limit(1).
+		Scan(ctx)
 	if err != nil {
 		return nil, err
 	}

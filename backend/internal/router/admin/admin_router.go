@@ -2,6 +2,7 @@ package admin
 
 import (
 	"github.com/ahmadzakyarifin/schoolpay/config"
+	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
 	academichandler "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/delivery"
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	academicusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/usecase"
@@ -19,7 +20,6 @@ import (
 	userauthhandler "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/delivery"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	userauthusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -98,7 +98,7 @@ func SetupAdminRoutes(
 
 	dashHdl := financehandler.NewDashboardHandler(db, userRepo, stuRepo, repRepo, ayRepo, notiRepo, auditSvc)
 	waHdl := notificationhandler.NewWhatsAppHandler(waSvc, notiRepo, msg, db, auditSvc)
-	supportHdl := supporthandler.NewSupportHandler(supportSvc)
+	supportHdl := supporthandler.NewSupportHandler(supportSvc, hub)
 	upHdl := academichandler.NewUploadHandler()
 
 	financeExportLimit := middleware.RateLimitMiddleware(redisClient, "finance_export", rate.Limit(10.0/60.0), 10)
@@ -110,11 +110,6 @@ func SetupAdminRoutes(
 
 	// Password & Profile
 	// Change password dipindahkan ke auth_router.go agar bisa diakses parent juga
-
-	// WebSocket Endpoint
-	g.GET("/ws", func(c *gin.Context) {
-		websocket.ServeWs(hub, c.Writer, c.Request)
-	})
 
 	notificationWriteLimit := middleware.RateLimitMiddleware(redisClient, "notification_write", rate.Limit(10.0/60.0), 10)
 	whatsappChatLimit := middleware.RateLimitMiddleware(redisClient, "whatsapp_chat", rate.Limit(20.0/60.0), 20)

@@ -450,13 +450,26 @@ const handleBulkResend = async (channel) => {
       )
       console.warn('Bulk Notification Errors:', result.errors)
     } else {
-      showNotification(`${result.sent || 0} Notifikasi berhasil dikirim`, 'success')
+      showNotification(`${result.sent || 0} Link aktivasi berhasil dikirim`, 'success')
     }
 
     selectedUserIds.value = []
     fetchUsers()
   } catch (err) {
-    const errorMsg = err.response?.data?.message || 'Gagal mengirim notifikasi massal'
+    const errorMsg = err.response?.data?.message || 'Gagal mengirim aktivasi massal'
+    showNotification(errorMsg, 'error')
+  }
+}
+
+const handleResendUser = async ({ user, channel }) => {
+  if (!user?.id) return
+
+  try {
+    await userService.resendNotification(user.id, channel)
+    showNotification(`Link aktivasi ${user.name} berhasil dikirim`, 'success')
+    fetchUsers()
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || 'Gagal mengirim link aktivasi'
     showNotification(errorMsg, 'error')
   }
 }
@@ -669,6 +682,7 @@ const visiblePages = computed(() => {
         @toggle-select-user="toggleSelectUser"
         @go-to-student="handleGoToStudent"
         @go-to-details="handleGoToUserDetails"
+        @resend-notification="handleResendUser"
       />
 
       <!-- Pagination -->

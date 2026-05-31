@@ -215,6 +215,34 @@ func (_m *SupportRepo) FindOpenByPhone(ctx context.Context, phone string) (*doma
 	return r0, r1
 }
 
+// FindOpenByParentID provides a mock function with given fields: ctx, parentID
+func (_m *SupportRepo) FindOpenByParentID(ctx context.Context, parentID uint) (*domain.Conversation, error) {
+	ret := _m.Called(ctx, parentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindOpenByParentID")
+	}
+
+	var r0 *domain.Conversation
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint) (*domain.Conversation, error)); ok {
+		return rf(ctx, parentID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint) *domain.Conversation); ok {
+		r0 = rf(ctx, parentID)
+	} else if ret.Get(0) != nil {
+		r0 = ret.Get(0).(*domain.Conversation)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint) error); ok {
+		r1 = rf(ctx, parentID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // MarkRead provides a mock function with given fields: ctx, db, conversationID
 func (_m *SupportRepo) MarkRead(ctx context.Context, db bun.IDB, conversationID uint) error {
 	ret := _m.Called(ctx, db, conversationID)

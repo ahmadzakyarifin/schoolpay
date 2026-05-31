@@ -70,13 +70,13 @@ const handleSubmit = async () => {
             <div class="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-2xl shadow-emerald-200 mx-auto mb-6 transform rotate-3">
               <UserCheckIcon class="text-white w-8 h-8" />
             </div>
-            <h1 class="text-2xl font-black tracking-tight text-slate-800">Activate Account</h1>
-            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mt-1">Set your password to continue</p>
+            <h1 class="text-2xl font-black tracking-tight text-slate-800">Aktivasi Akun</h1>
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mt-1">Atur password untuk masuk ke SchoolPay</p>
           </div>
 
           <form @submit.prevent="handleSubmit" class="space-y-6">
             <div class="space-y-1.5">
-              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">New Password</label>
+              <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Password Baru</label>
               <div class="relative group">
                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-emerald-600 text-slate-300">
                   <LockIcon class="w-5 h-5" />
@@ -85,10 +85,14 @@ const handleSubmit = async () => {
                   v-model="password" 
                   type="password" 
                   class="modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl" 
-                  placeholder="Create a strong password"
+                  placeholder="Minimal 6 karakter"
+                  minlength="6"
                   required
                 />
               </div>
+              <p class="text-[10px] font-semibold text-slate-400 px-1 leading-relaxed">
+                Link aktivasi berlaku 7 hari. Jika sudah kedaluwarsa, minta admin sekolah mengirim ulang dari Manajemen Pengguna.
+              </p>
             </div>
 
             <!-- Error Message -->
@@ -105,7 +109,7 @@ const handleSubmit = async () => {
               :disabled="loading"
             >
               <div v-if="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              <span class="uppercase text-xs font-black tracking-widest">{{ loading ? 'Activating...' : 'Activate Account' }}</span>
+              <span class="uppercase text-xs font-black tracking-widest">{{ loading ? 'Mengaktifkan...' : 'Aktifkan Akun' }}</span>
               <ArrowRightIcon v-if="!loading" class="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
           </form>
@@ -115,11 +119,11 @@ const handleSubmit = async () => {
           <div class="w-20 h-20 bg-emerald-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-emerald-200">
             <CheckIcon class="w-10 h-10" />
           </div>
-          <h2 class="text-2xl font-black text-slate-800 mb-4">Account Active!</h2>
-          <p class="text-sm font-medium text-slate-500 mb-10 leading-relaxed">Your account has been successfully activated. You can now log in to the SchoolPay dashboard.</p>
+          <h2 class="text-2xl font-black text-slate-800 mb-4">Akun Aktif</h2>
+          <p class="text-sm font-medium text-slate-500 mb-10 leading-relaxed">Akun berhasil diaktifkan. Anda akan diarahkan ke dashboard SchoolPay.</p>
           
           <router-link to="/" class="btn-primary w-full py-4 flex items-center justify-center gap-3">
-            <span class="uppercase text-xs font-black tracking-widest">Go to Login</span>
+            <span class="uppercase text-xs font-black tracking-widest">Ke Login</span>
             <ArrowRightIcon class="w-4 h-4" />
           </router-link>
         </div>

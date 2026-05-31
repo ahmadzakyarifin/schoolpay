@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ahmadzakyarifin/schoolpay/config"
 	financeusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
 	webhookusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/usecase"
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ func TestNewWebhookHandler(t *testing.T) {
 		s   webhookusecase.WebhookService
 		pay financeusecase.PaymentService
 		pg  financeusecase.PaymentGatewayService
+		cfg *config.Config
 	}
 	tests := []struct {
 		name string
@@ -24,7 +26,7 @@ func TestNewWebhookHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewWebhookHandler(tt.args.s, tt.args.pay, tt.args.pg); !reflect.DeepEqual(got, tt.want) {
+			if got := NewWebhookHandler(tt.args.s, tt.args.pay, tt.args.pg, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewWebhookHandler() = %v, want %v", got, tt.want)
 			}
 		})

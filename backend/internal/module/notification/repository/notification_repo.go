@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -43,24 +44,31 @@ func (r *notificationRepo) FindByID(ctx context.Context, id uint) (*domain.Notif
 }
 
 func (r *notificationRepo) UpdateStatusByWhatsappID(ctx context.Context, whatsappID string, status string) error {
+	status = normalizeDeliveryStatus(status)
+	rank := deliveryStatusRank(status)
+
 	_, err := r.db.NewUpdate().
 		Model((*domain.Notification)(nil)).
 		Set("delivery_status = ?", status).
 		Where("whatsapp_id = ?", whatsappID).
+		Where("(? = 'FAILED' AND UPPER(COALESCE(delivery_status, '')) NOT IN ('READ', 'DELIVERED')) OR (? != 'FAILED' AND CASE UPPER(COALESCE(delivery_status, '')) WHEN 'READ' THEN 4 WHEN 'DELIVERED' THEN 3 WHEN 'SENT' THEN 2 WHEN 'SUCCESS' THEN 2 WHEN 'PENDING' THEN 1 WHEN '' THEN 0 ELSE 0 END <= ?)", status, status, rank).
 		Exec(ctx)
 	return err
 }
 
 func (r *notificationRepo) GetStats(ctx context.Context) (map[string]int, error) {
 	var stats []struct {
-		Status string `bun:"delivery_status"`
-		Count  int    `bun:"count"`
+		Status  string `bun:"delivery_status"`
+		Channel string `bun:"channel"`
+		Count   int    `bun:"count"`
 	}
 
 	err := r.db.NewSelect().
 		Model((*domain.Notification)(nil)).
-		ColumnExpr("delivery_status, COUNT(*) as count").
-		Group("delivery_status").
+		ColumnExpr("delivery_status").
+		ColumnExpr("LOWER(COALESCE(NULLIF(channel, ''), CASE WHEN whatsapp_id IS NOT NULL AND whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) as channel").
+		ColumnExpr("COUNT(*) as count").
+		Group("delivery_status", "channel").
 		Scan(ctx, &stats)
 
 	if err != nil {
@@ -72,7 +80,11 @@ func (r *notificationRepo) GetStats(ctx context.Context) (map[string]int, error)
 		result[status] = 0
 	}
 	for _, s := range stats {
-		result[normalizeDeliveryStatus(s.Status)] += s.Count
+		normalized := normalizeDeliveryStatus(s.Status)
+		if s.Channel != "whatsapp" && (normalized == "DELIVERED" || normalized == "READ") {
+			normalized = "SENT"
+		}
+		result[normalized] += s.Count
 	}
 	return result, nil
 }
@@ -95,9 +107,9 @@ func (r *notificationRepo) GetEfficacyStats(ctx context.Context, channel string,
 	}
 
 	if channel == "whatsapp" {
-		q.Where("whatsapp_id IS NOT NULL AND whatsapp_id != ''")
+		q.Where("LOWER(COALESCE(NULLIF(channel, ''), CASE WHEN whatsapp_id IS NOT NULL AND whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'whatsapp'")
 	} else {
-		q.Where("whatsapp_id IS NULL OR whatsapp_id = ''")
+		q.Where("LOWER(COALESCE(NULLIF(channel, ''), CASE WHEN whatsapp_id IS NOT NULL AND whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'email'")
 	}
 
 	err := q.Group("delivery_status").Scan(ctx, &stats)
@@ -106,11 +118,21 @@ func (r *notificationRepo) GetEfficacyStats(ctx context.Context, channel string,
 	}
 
 	result := make(map[string]int)
-	for _, status := range []string{"pending", "sent", "delivered", "read", "failed"} {
+	statuses := []string{"pending", "sent", "failed"}
+	if channel == "whatsapp" {
+		statuses = []string{"pending", "sent", "delivered", "read", "failed"}
+	}
+	for _, status := range statuses {
 		result[status] = 0
 	}
 	for _, s := range stats {
-		result[strings.ToLower(normalizeDeliveryStatus(s.Status))] += s.Count
+		normalized := strings.ToLower(normalizeDeliveryStatus(s.Status))
+		if channel != "whatsapp" && (normalized == "delivered" || normalized == "read") {
+			normalized = "sent"
+		}
+		if _, ok := result[normalized]; ok {
+			result[normalized] += s.Count
+		}
 	}
 	return result, nil
 }
@@ -129,6 +151,21 @@ func normalizeDeliveryStatus(status string) string {
 		return "PENDING"
 	default:
 		return "SENT"
+	}
+}
+
+func deliveryStatusRank(status string) int {
+	switch normalizeDeliveryStatus(status) {
+	case "READ":
+		return 4
+	case "DELIVERED":
+		return 3
+	case "SENT":
+		return 2
+	case "PENDING":
+		return 1
+	default:
+		return 0
 	}
 }
 
@@ -162,23 +199,28 @@ func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int,
 	status = strings.TrimSpace(strings.ToLower(status))
 	search = strings.TrimSpace(search)
 	channel = strings.TrimSpace(strings.ToLower(channel))
+	statusExpr := "LOWER(CASE WHEN n.delivery_status IN ('SUCCESS') THEN 'sent' WHEN n.delivery_status IS NULL OR n.delivery_status = '' THEN 'pending' ELSE n.delivery_status END)"
 	base := r.db.NewSelect().
 		Model((*domain.Notification)(nil)).
-		ColumnExpr("n.id, n.user_id, n.title, n.message, n.type, n.is_read, n.whatsapp_id, n.delivery_error, n.created_at, n.updated_at").
+		ColumnExpr("n.id, n.user_id, n.title, n.message, n.type, n.channel, n.is_read, n.whatsapp_id, n.delivery_error, n.created_at, n.updated_at").
 		ColumnExpr("CASE WHEN n.delivery_status IN ('SUCCESS') THEN 'sent' WHEN n.delivery_status IS NULL OR n.delivery_status = '' THEN 'pending' ELSE LOWER(n.delivery_status) END as delivery_status").
 		ColumnExpr("COALESCE(u.name, '') as recipient_name").
 		ColumnExpr("COALESCE(u.phone_number, '') as recipient_phone").
 		ColumnExpr("COALESCE(u.email, '') as recipient_email").
-		ColumnExpr("CASE WHEN n.whatsapp_id IS NULL OR n.whatsapp_id = '' THEN 'email' ELSE 'whatsapp' END as channel").
+		ColumnExpr("COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NULL OR n.whatsapp_id = '' THEN 'email' ELSE 'whatsapp' END) as channel").
 		Join("LEFT JOIN users u ON n.user_id = u.id")
 
 	if status != "" {
-		base.Where("LOWER(CASE WHEN n.delivery_status IN ('SUCCESS') THEN 'sent' WHEN n.delivery_status IS NULL OR n.delivery_status = '' THEN 'pending' ELSE n.delivery_status END) = ?", status)
+		if channel == "email" && status == "sent" {
+			base.Where(statusExpr+" IN (?)", bun.In([]string{"sent", "delivered", "read"}))
+		} else {
+			base.Where(statusExpr+" = ?", status)
+		}
 	}
 	if channel == "whatsapp" {
-		base.Where("n.whatsapp_id IS NOT NULL AND n.whatsapp_id != ''")
+		base.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'whatsapp'")
 	} else if channel == "email" {
-		base.Where("n.whatsapp_id IS NULL OR n.whatsapp_id = ''")
+		base.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'email'")
 	}
 	if search != "" {
 		like := "%" + search + "%"
@@ -195,6 +237,15 @@ func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int,
 		Limit(limit).
 		Offset((page-1)*limit).
 		Scan(ctx, &results)
+
+	for _, row := range results {
+		if strings.EqualFold(fmt.Sprint(row["channel"]), "email") {
+			status := strings.ToLower(fmt.Sprint(row["delivery_status"]))
+			if status == "delivered" || status == "read" {
+				row["delivery_status"] = "sent"
+			}
+		}
+	}
 
 	return results, total, err
 }

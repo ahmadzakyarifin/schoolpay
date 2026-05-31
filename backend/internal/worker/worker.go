@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
@@ -54,6 +55,7 @@ func HandleAuthEmailTask(db *bun.DB, notiRepo notificationrepo.NotificationRepo,
 				Title:          job.Subject,
 				Message:        job.Body,
 				Type:           "auth",
+				Channel:        "email",
 				DeliveryStatus: status,
 				DeliveryError:  deliveryErr,
 			})
@@ -62,6 +64,155 @@ func HandleAuthEmailTask(db *bun.DB, notiRepo notificationrepo.NotificationRepo,
 			return fmt.Errorf("SendEmail failed: %v", err)
 		}
 		return nil
+	}
+}
+
+type financeNotificationText struct {
+	Subject string
+	Message string
+}
+
+func formatFinancePaymentSuccess(studentName string, payment *financedomain.Payment) financeNotificationText {
+	if payment == nil {
+		return financeNotificationText{Subject: "Konfirmasi Pembayaran SchoolPay", Message: "Pembayaran berhasil diterima oleh SchoolPay."}
+	}
+	lines := []string{
+		"✅ *PEMBAYARAN BERHASIL*",
+		"",
+		fmt.Sprintf("Halo Ayah/Bunda dari *%s*,", studentName),
+		"",
+		"Pembayaran sudah kami terima dengan rincian:",
+		"",
+		fmt.Sprintf("• Total dialokasikan: *%s*", utils.FormatCurrency(payment.Amount)),
+	}
+	if payment.DepositApplied > 0 {
+		lines = append(lines,
+			fmt.Sprintf("• Saldo deposit dipakai: *%s*", utils.FormatCurrency(payment.DepositApplied)),
+			fmt.Sprintf("• Dibayar via %s: *%s*", payment.Method, utils.FormatCurrency(payment.Amount-payment.DepositApplied)),
+		)
+	}
+	lines = append(lines,
+		fmt.Sprintf("• Metode: *%s*", payment.Method),
+		fmt.Sprintf("• Referensi: *%s*", payment.TransactionRef),
+		fmt.Sprintf("• Tanggal: *%s*", time.Now().Format("02-01-2006 15:04")),
+		"",
+		"Bukti pembayaran resmi dapat diunduh melalui portal orang tua.",
+		"Terima kasih.",
+	)
+	return financeNotificationText{Subject: "Konfirmasi Pembayaran SchoolPay", Message: strings.Join(lines, "\n")}
+}
+
+func formatFinanceBillNotification(notifType, studentName, billTypeName, period, amount, dueDate, customReason, customMessage string) financeNotificationText {
+	if customMessage != "" && (notifType == "initial" || notifType == "adjustment") {
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.TrimSpace(customMessage)}
+	}
+	switch notifType {
+	case "initial":
+		lines := []string{
+			"📋 *TAGIHAN BARU*",
+			"",
+			fmt.Sprintf("Halo Ayah/Bunda dari *%s*,", studentName),
+			"",
+			"Tagihan baru telah diterbitkan:",
+			"",
+			fmt.Sprintf("• Jenis: *%s*", billTypeName),
+			fmt.Sprintf("• Periode: *%s*", period),
+			fmt.Sprintf("• Nominal: *%s*", amount),
+			fmt.Sprintf("• Jatuh tempo: *%s*", dueDate),
+		}
+		if customReason != "" {
+			lines = append(lines, "", "Keterangan:", customReason)
+		}
+		lines = append(lines, "", "Silakan lakukan pembayaran melalui portal orang tua.", "Terima kasih.")
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.Join(lines, "\n")}
+	case "reminder":
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.Join([]string{
+			"🔔 *PENGINGAT PEMBAYARAN*",
+			"",
+			fmt.Sprintf("Halo Ayah/Bunda dari *%s*,", studentName),
+			"",
+			"Tagihan berikut akan jatuh tempo dalam 3 hari:",
+			"",
+			fmt.Sprintf("• Jenis: *%s*", billTypeName),
+			fmt.Sprintf("• Periode: *%s*", period),
+			fmt.Sprintf("• Nominal: *%s*", amount),
+			fmt.Sprintf("• Jatuh tempo: *%s*", dueDate),
+			"",
+			"Abaikan pesan ini jika pembayaran sudah dilakukan.",
+			"Terima kasih.",
+		}, "\n")}
+	case "overdue":
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.Join([]string{
+			"⚠️ *PERINGATAN TUNGGAKAN*",
+			"",
+			fmt.Sprintf("Halo Ayah/Bunda dari *%s*,", studentName),
+			"",
+			"Tagihan berikut sudah melewati jatuh tempo:",
+			"",
+			fmt.Sprintf("• Jenis: *%s*", billTypeName),
+			fmt.Sprintf("• Periode: *%s*", period),
+			fmt.Sprintf("• Nominal: *%s*", amount),
+			fmt.Sprintf("• Jatuh tempo: *%s*", dueDate),
+			"",
+			"Pembayaran online untuk tagihan jatuh tempo ditutup.",
+			"Mohon lakukan pembayaran langsung ke admin sekolah.",
+		}, "\n")}
+	case "adjustment":
+		lines := []string{
+			"📢 *PENYESUAIAN TAGIHAN*",
+			"",
+			fmt.Sprintf("Yth. Orang Tua/Wali dari *%s*,", studentName),
+			"",
+			"Ada penyesuaian tagihan dengan rincian:",
+			"",
+			fmt.Sprintf("• Jenis: *%s*", billTypeName),
+			fmt.Sprintf("• Periode: *%s*", period),
+			fmt.Sprintf("• Selisih kekurangan: *%s*", amount),
+		}
+		if customReason != "" {
+			lines = append(lines, "", "Alasan penyesuaian:", customReason)
+		}
+		lines = append(lines, "", "Tagihan penyesuaian sudah tersedia di portal orang tua.", "Terima kasih atas perhatian dan kerja sama Bapak/Ibu.")
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.Join(lines, "\n")}
+	case "refund_deposit":
+		lines := []string{
+			"💳 *REFUND SALDO DEPOSIT*",
+			"",
+			fmt.Sprintf("Halo Ayah/Bunda dari *%s*,", studentName),
+			"",
+		}
+		if customMessage != "" {
+			lines = append(lines, "Informasi refund:", "", strings.TrimSpace(customMessage))
+		} else {
+			lines = append(lines,
+				"Ada dana pembayaran yang dialihkan ke saldo deposit.",
+				"Silakan cek portal orang tua untuk melihat saldo terbaru.",
+			)
+		}
+		lines = append(lines,
+			"",
+			"Terima kasih.",
+		)
+		return financeNotificationText{Subject: financeSubject(notifType), Message: strings.Join(lines, "\n")}
+	default:
+		return financeNotificationText{Subject: "Notifikasi SchoolPay", Message: "Ada informasi baru dari SchoolPay. Silakan cek portal orang tua."}
+	}
+}
+
+func financeSubject(notifType string) string {
+	switch notifType {
+	case "initial":
+		return "Tagihan Baru SchoolPay"
+	case "reminder":
+		return "Pengingat Pembayaran SchoolPay"
+	case "overdue":
+		return "Peringatan Tunggakan SchoolPay"
+	case "adjustment":
+		return "Penyesuaian Tarif Tagihan SchoolPay"
+	case "refund_deposit":
+		return "Refund Saldo Deposit SchoolPay"
+	default:
+		return "Notifikasi SchoolPay"
 	}
 }
 
@@ -87,25 +238,13 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 
 			switch job.NotifType {
 			case "payment_success":
-				subject = "Konfirmasi Pembayaran SchoolPay"
-				depositLine := ""
-				if job.Payment.DepositApplied > 0 {
-					depositLine = fmt.Sprintf("🔹 *Saldo Deposit Dipakai:* %s\n🔹 *Dibayar via %s:* %s\n", utils.FormatCurrency(job.Payment.DepositApplied), job.Payment.Method, utils.FormatCurrency(job.Payment.Amount-job.Payment.DepositApplied))
-				}
-				message = fmt.Sprintf(
-					"✅ *PEMBAYARAN BERHASIL*\n\nHalo Ayah/Bunda dari *%s*,\n\n"+
-						"Terima kasih, pembayaran Anda telah kami terima:\n"+
-						"🔹 *Total Dialokasikan:* %s\n"+
-						"%s"+
-						"🔹 *Metode:* %s\n"+
-						"🔹 *Referensi:* %s\n"+
-						"🔹 *Tanggal:* %s\n\n"+
-						"Bukti pembayaran resmi dapat Anda unduh melalui portal orang tua. Terima kasih telah melakukan pembayaran tepat waktu! ✨",
-					student.Name, utils.FormatCurrency(job.Payment.Amount), depositLine, job.Payment.Method, job.Payment.TransactionRef, time.Now().Format("02-01-2006 15:04"),
-				)
+				text := formatFinancePaymentSuccess(student.Name, job.Payment)
+				subject = text.Subject
+				message = text.Message
 			case "refund_deposit":
-				subject = "Refund Saldo Deposit SchoolPay"
-				message = job.CustomMessage
+				text := formatFinanceBillNotification(job.NotifType, student.Name, "", "", "", "", "", job.CustomMessage)
+				subject = text.Subject
+				message = text.Message
 			default:
 				amountStr := utils.FormatCurrency(job.Bill.Amount)
 				periodStr := "-"
@@ -123,60 +262,9 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 					}
 				}
 
-				switch job.NotifType {
-				case "initial":
-					subject = "Tagihan Baru SchoolPay"
-					if job.CustomMessage != "" {
-						message = job.CustomMessage
-					} else {
-						message = fmt.Sprintf(
-							"📋 *TAGIHAN BARU - SCHOOLPAY*\n\nHalo Ayah/Bunda dari *%s*,\n\n"+
-								"Tagihan baru telah diterbitkan:\n"+
-								"🔹 *Jenis:* %s\n"+
-								"🔹 *Periode:* %s\n"+
-								"🔹 *Nominal:* %s\n"+
-								"🔹 *Jatuh Tempo:* %s\n\n",
-							student.Name, billTypeName, periodStr, amountStr, job.Bill.DueDate.Format("02-01-2006"),
-						)
-						if job.CustomReason != "" {
-							message += fmt.Sprintf("*Keterangan Tambahan:*\n_%s_\n\n", job.CustomReason)
-						}
-						message += "Silakan lakukan pembayaran melalui portal orang tua. Terima kasih."
-					}
-				case "reminder":
-					subject = "Pengingat Pembayaran SchoolPay"
-					message = fmt.Sprintf(
-						"🔔 *PENGINGAT PEMBAYARAN*\n\nHalo Ayah/Bunda dari *%s*,\n\n"+
-							"Kami menginformasikan bahwa tagihan *%s* (%s) sebesar *%s* akan jatuh tempo dalam 3 hari lagi.\n\n"+
-							"Abaikan pesan ini jika Anda sudah melakukan pembayaran. Terima kasih.",
-						student.Name, billTypeName, periodStr, amountStr,
-					)
-				case "overdue":
-					subject = "Peringatan Tunggakan SchoolPay"
-					message = fmt.Sprintf(
-						"⚠️ *PERINGATAN TUNGGAKAN*\n\nHalo Ayah/Bunda dari *%s*,\n\n"+
-							"Tagihan *%s* (%s) sebesar *%s* telah MELEWATI batas jatuh tempo pada tanggal %s.\n\n"+
-							"Pembayaran online untuk tagihan jatuh tempo ditutup. Mohon lakukan pembayaran langsung ke admin sekolah. Terima kasih.",
-						student.Name, billTypeName, periodStr, amountStr, job.Bill.DueDate.Format("02-01-2006"),
-					)
-				case "adjustment":
-					subject = "Penyesuaian Tarif Tagihan SchoolPay"
-					if job.CustomMessage != "" {
-						message = job.CustomMessage
-					} else {
-						message = fmt.Sprintf(
-							"📢 *PEMBERITAHUAN RESMI SCHOOLPAY*\n*Penyesuaian Tarif Tagihan Sekolah*\n\n"+
-								"Yth. Orang Tua / Wali dari *%s*,\n\n"+
-								"Melalui pesan ini, kami menginformasikan adanya penyesuaian kebijakan tarif untuk tagihan *%s* (%s) dengan rincian selisih penyesuaian sebesar:\n"+
-								"▫️ *Selisih Kekurangan:* *%s*\n\n",
-							student.Name, billTypeName, periodStr, amountStr,
-						)
-						if job.CustomReason != "" {
-							message += fmt.Sprintf("*Mengapa ada penyesuaian ini?*\n_%s_\n\n", job.CustomReason)
-						}
-						message += "Sistem kami telah menerbitkan tagihan penyesuaian pada akun SchoolPay Anda. Pembayaran dapat dilakukan melalui portal orang tua. Terima kasih atas perhatian dan kerja sama Bapak/Ibu."
-					}
-				}
+				text := formatFinanceBillNotification(job.NotifType, student.Name, billTypeName, periodStr, amountStr, job.Bill.DueDate.Format("02-01-2006"), job.CustomReason, job.CustomMessage)
+				subject = text.Subject
+				message = text.Message
 			}
 
 			if parent.PhoneNumber != "" {
@@ -198,18 +286,24 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 					DeliveryStatus: status,
 					DeliveryError:  deliveryErr,
 					Type:           "finance",
+					Channel:        "whatsapp",
 				}
 				notiObj.WhatsappID = &waID
 				_ = notiRepo.Create(ctx, db, notiObj)
 
 				if audit != nil {
 					_ = audit.Log(ctx, db, 0, "System/Automation", "system", "SEND_NOTIFICATION", "notifications", notiObj.ID, nil, map[string]interface{}{
-						"title":            subject,
-						"message":          message,
-						"channel":          "WhatsApp",
-						"whatsapp_id":      waID,
-						"status":           status,
-						"error":            func() string { if deliveryErr != nil { return *deliveryErr }; return "" }(),
+						"title":       subject,
+						"message":     message,
+						"channel":     "WhatsApp",
+						"whatsapp_id": waID,
+						"status":      status,
+						"error": func() string {
+							if deliveryErr != nil {
+								return *deliveryErr
+							}
+							return ""
+						}(),
 						"target_user_id":   parent.ID,
 						"target_user_name": parent.Name,
 					}, "127.0.0.1", "System Worker")
@@ -232,16 +326,22 @@ func HandleFinanceNotificationTask(db *bun.DB, stuRepo academicrepo.StudentRepo,
 					DeliveryStatus: status,
 					DeliveryError:  deliveryErr,
 					Type:           "finance",
+					Channel:        "email",
 				}
 				_ = notiRepo.Create(ctx, db, notiObj)
 
 				if audit != nil {
 					_ = audit.Log(ctx, db, 0, "System/Automation", "system", "SEND_NOTIFICATION", "notifications", notiObj.ID, nil, map[string]interface{}{
-						"title":            subject,
-						"message":          message,
-						"channel":          "Email",
-						"status":           status,
-						"error":            func() string { if deliveryErr != nil { return *deliveryErr }; return "" }(),
+						"title":   subject,
+						"message": message,
+						"channel": "Email",
+						"status":  status,
+						"error": func() string {
+							if deliveryErr != nil {
+								return *deliveryErr
+							}
+							return ""
+						}(),
 						"target_user_id":   parent.ID,
 						"target_user_name": parent.Name,
 					}, "127.0.0.1", "System Worker")

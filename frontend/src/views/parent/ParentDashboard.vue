@@ -1,22 +1,26 @@
 <script setup>
-import { ref, onMounted, computed, watch, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
 import axios from 'axios'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/auth'
+import supportService from '../../services/support.service'
 import { 
   User as UserIcon, 
   CreditCard as BillIcon, 
   Calendar as CalendarIcon,
-  ChevronRight as ChevronRightIcon,
   ChevronDown as ChevronDownIcon,
   CheckCircle2 as PaidIcon,
   AlertCircle as AlertIcon,
   Search as SearchIcon,
   Filter as FilterIcon,
+  ArrowUpDown as SortIcon,
   RotateCcw as ResetIcon,
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  MessageCircle as ChatIcon,
+  Send as SendIcon,
+  X as CloseIcon
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
@@ -26,6 +30,7 @@ const students = ref([])
 const selectedStudent = ref(null)
 const allBills = ref([])
 const paymentHistory = ref([])
+const classHistory = ref([])
 const loading = ref(false)
 const payingBillId = ref(null)
 const showStudentDropdown = ref(false)
@@ -33,12 +38,31 @@ const showStudentDropdown = ref(false)
 // Filter & Pagination State
 const search = ref('')
 const statusFilter = ref('')
+const academicYearFilter = ref('')
+const classFilter = ref('')
+const sortFilter = ref('')
 const page = ref(1)
 const limit = ref(10)
 const isMounted = ref(false)
-const showFilters = ref(false)
 const notification = reactive({ show: false, message: '', type: 'success' })
 let notificationTimer
+
+const supportOpen = ref(false)
+const supportConversation = ref(null)
+const supportMessages = ref([])
+const supportDraft = ref('')
+const supportTopic = ref('tagihan')
+const supportLoading = ref(false)
+const supportSending = ref(false)
+const supportUnread = ref(0)
+
+const supportTopics = [
+  { value: 'tagihan', label: 'Tagihan' },
+  { value: 'pembayaran', label: 'Pembayaran' },
+  { value: 'akun', label: 'Akun' },
+  { value: 'teknis', label: 'Teknis' },
+  { value: 'lainnya', label: 'Lainnya' }
+]
 
 const showNotification = (message, type = 'success') => {
   clearTimeout(notificationTimer)
@@ -58,7 +82,11 @@ const fetchParentData = async () => {
     
     if (students.value.length > 0) {
       selectedStudent.value = students.value[0]
-      await fetchBills()
+      await Promise.all([
+        fetchBills(),
+        fetchClassHistory(selectedStudent.value.id),
+        fetchPaymentHistory()
+      ])
     }
   } catch (err) {
     console.error('Gagal mengambil data siswa')
@@ -77,6 +105,21 @@ const fetchBills = async () => {
     console.error('Gagal mengambil data tagihan')
   } finally {
     loading.value = false
+  }
+}
+
+const fetchClassHistory = async (studentId = selectedStudent.value?.id) => {
+  if (!studentId) {
+    classHistory.value = []
+    return
+  }
+
+  try {
+    const res = await axios.get(`parent/students/${studentId}/class-history`)
+    classHistory.value = res.data.data || []
+  } catch (err) {
+    classHistory.value = []
+    showNotification(err.response?.data?.message || 'Gagal mengambil riwayat kelas anak', 'error')
   }
 }
 
@@ -102,18 +145,145 @@ const fetchPaymentHistory = async () => {
   }
 }
 
-const selectStudent = (student) => {
+const fetchParentSupport = async (silent = false) => {
+  if (!silent) supportLoading.value = true
+  try {
+    const [convRes, msgRes] = await Promise.all([
+      supportService.getParentConversation(),
+      supportService.getParentMessages()
+    ])
+    supportConversation.value = convRes.data.data || null
+    supportMessages.value = msgRes.data.data || []
+  } catch (err) {
+    if (!silent) showNotification(err.response?.data?.message || 'Gagal memuat chat CS', 'error')
+  } finally {
+    supportLoading.value = false
+  }
+}
+
+const openSupportPanel = async () => {
+  supportOpen.value = true
+  supportUnread.value = 0
+  await fetchParentSupport()
+}
+
+const sendSupportMessage = async () => {
+  const text = supportDraft.value.trim()
+  if (!text) {
+    showNotification('Tulis pesan singkat sebelum menghubungi CS Admin.', 'warning')
+    return
+  }
+  supportSending.value = true
+  try {
+    await supportService.sendParentMessage({
+      topic: supportTopic.value,
+      message: text
+    })
+    supportDraft.value = ''
+    supportOpen.value = true
+    supportUnread.value = 0
+    await fetchParentSupport()
+    showNotification('Pesan berhasil masuk ke CS Admin.')
+  } catch (err) {
+    showNotification(err.response?.data?.message || 'Gagal mengirim pesan CS', 'error')
+  } finally {
+    supportSending.value = false
+  }
+}
+
+const handleSupportUpdate = async (event) => {
+  const changedID = Number(event.detail?.conversation_id || 0)
+  if (changedID && supportConversation.value?.id && changedID !== supportConversation.value.id) return
+
+  const before = supportMessages.value.length
+  await fetchParentSupport(true)
+  const after = supportMessages.value.length
+  if (!supportOpen.value && after > before) {
+    supportUnread.value += after - before
+  }
+}
+
+const handleOpenParentSupport = () => {
+  openSupportPanel()
+}
+
+const selectStudent = async (student) => {
   selectedStudent.value = student
   showStudentDropdown.value = false
+  academicYearFilter.value = ''
+  classFilter.value = ''
   page.value = 1
-  fetchPaymentHistory()
+  await Promise.all([
+    fetchClassHistory(student.id),
+    fetchPaymentHistory()
+  ])
 }
 
 const resetFilters = () => {
   search.value = ''
   statusFilter.value = ''
+  academicYearFilter.value = ''
+  classFilter.value = ''
+  sortFilter.value = ''
   page.value = 1
 }
+
+const paymentAcademicYears = (payment) => {
+  const years = new Set()
+  ;(payment?.details || []).forEach(detail => {
+    if (detail.academic_year) years.add(String(detail.academic_year))
+  })
+  return [...years]
+}
+
+const availableAcademicYears = computed(() => {
+  const years = new Set()
+  allBills.value
+    .filter(bill => !selectedStudent.value || bill.student_id === selectedStudent.value.id)
+    .forEach(bill => {
+      if (bill.academic_year) years.add(String(bill.academic_year))
+    })
+  paymentHistory.value.forEach(payment => {
+    paymentAcademicYears(payment).forEach(year => years.add(year))
+  })
+  return [...years].filter(Boolean).sort().reverse()
+})
+
+const classHistoryLabel = (item) => {
+  const name = item?.class_name || 'Kelas'
+  const year = item?.academic_year ? ` - ${item.academic_year}` : ''
+  return `${name}${year}`
+}
+
+const availableClassFilters = computed(() => {
+  return (classHistory.value || [])
+    .filter(item => item?.id)
+    .map(item => ({
+      id: String(item.id),
+      label: classHistoryLabel(item),
+      academic_year: String(item.academic_year || '')
+    }))
+})
+
+const selectedClassAcademicYear = computed(() => {
+  const selected = availableClassFilters.value.find(item => item.id === classFilter.value)
+  return selected?.academic_year || ''
+})
+
+const currentStudentClassText = computed(() => {
+  const className = selectedStudent.value?.class_name
+  const majorName = selectedStudent.value?.major_name
+  if (className && majorName) return `${className} - ${majorName}`
+  return className || majorName || 'Kelas belum diatur'
+})
+
+const classLabelForAcademicYear = (year) => {
+  if (!year) return ''
+  const item = classHistory.value.find(row => String(row.academic_year || '') === String(year))
+  return item ? classHistoryLabel(item) : ''
+}
+
+const isHistoryView = computed(() => route.path.includes('/history'))
 
 // Computed Bills
 const filteredBills = computed(() => {
@@ -135,14 +305,24 @@ const filteredBills = computed(() => {
     )
   }
 
-  if (statusFilter.value) {
+  if (statusFilter.value === 'overdue') {
+    filtered = filtered.filter(b => b.status !== 'paid' && isOverdue(b))
+  } else if (statusFilter.value === 'outstanding') {
+    filtered = filtered.filter(b => b.status !== 'paid')
+  } else if (statusFilter.value) {
     filtered = filtered.filter(b => b.status === statusFilter.value)
   }
 
-  return filtered
-})
+  if (academicYearFilter.value) {
+    filtered = filtered.filter(b => String(b.academic_year || '') === academicYearFilter.value)
+  }
 
-const isHistoryView = computed(() => route.path.includes('/history'))
+  if (selectedClassAcademicYear.value) {
+    filtered = filtered.filter(b => String(b.academic_year || '') === selectedClassAcademicYear.value)
+  }
+
+  return sortBills(filtered)
+})
 
 const paymentDetailNames = (payment) => {
   const details = payment?.details || []
@@ -153,6 +333,83 @@ const paymentDetailNames = (payment) => {
     return `${name}${period}`
   })
 }
+
+const dateValue = (value) => {
+  if (!value) return 0
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const textCompare = (a, b) => String(a || '').localeCompare(String(b || ''), 'id-ID', { sensitivity: 'base' })
+
+const sortBills = (rows) => {
+  const sorted = [...rows]
+  const option = sortFilter.value || 'due_asc'
+
+  sorted.sort((a, b) => {
+    switch (option) {
+      case 'due_desc':
+        return dateValue(b.due_date) - dateValue(a.due_date)
+      case 'amount_desc':
+        return remainingAmount(b) - remainingAmount(a)
+      case 'amount_asc':
+        return remainingAmount(a) - remainingAmount(b)
+      case 'name_asc':
+        return textCompare(a.name || a.bill_type_name, b.name || b.bill_type_name)
+      case 'status_asc':
+        return textCompare(a.status, b.status)
+      case 'due_asc':
+      default:
+        return dateValue(a.due_date) - dateValue(b.due_date)
+    }
+  })
+
+  return sorted
+}
+
+const sortPayments = (rows) => {
+  const sorted = [...rows]
+  const option = sortFilter.value || 'date_desc'
+
+  sorted.sort((a, b) => {
+    switch (option) {
+      case 'date_asc':
+        return dateValue(a.paid_at || a.created_at) - dateValue(b.paid_at || b.created_at)
+      case 'amount_desc':
+        return Number(b.amount || 0) - Number(a.amount || 0)
+      case 'amount_asc':
+        return Number(a.amount || 0) - Number(b.amount || 0)
+      case 'method_asc':
+        return textCompare(a.method || a.channel, b.method || b.channel)
+      case 'date_desc':
+      default:
+        return dateValue(b.paid_at || b.created_at) - dateValue(a.paid_at || a.created_at)
+    }
+  })
+
+  return sorted
+}
+
+const sortOptions = computed(() => {
+  if (isHistoryView.value) {
+    return [
+      { value: 'date_desc', label: 'Terbaru' },
+      { value: 'date_asc', label: 'Terlama' },
+      { value: 'amount_desc', label: 'Nominal Besar' },
+      { value: 'amount_asc', label: 'Nominal Kecil' },
+      { value: 'method_asc', label: 'Metode A-Z' }
+    ]
+  }
+
+  return [
+    { value: 'due_asc', label: 'Jatuh Tempo Dekat' },
+    { value: 'due_desc', label: 'Jatuh Tempo Jauh' },
+    { value: 'amount_desc', label: 'Sisa Besar' },
+    { value: 'amount_asc', label: 'Sisa Kecil' },
+    { value: 'name_asc', label: 'Tagihan A-Z' },
+    { value: 'status_asc', label: 'Status A-Z' }
+  ]
+})
 
 const filteredPayments = computed(() => {
   let filtered = paymentHistory.value
@@ -171,13 +428,22 @@ const filteredPayments = computed(() => {
     })
   }
 
-  return filtered
+  if (academicYearFilter.value) {
+    filtered = filtered.filter(payment => paymentAcademicYears(payment).includes(academicYearFilter.value))
+  }
+
+  if (selectedClassAcademicYear.value) {
+    filtered = filtered.filter(payment => paymentAcademicYears(payment).includes(selectedClassAcademicYear.value))
+  }
+
+  return sortPayments(filtered)
 })
 
 const currentRows = computed(() => isHistoryView.value ? filteredPayments.value : filteredBills.value)
 
 watch(isHistoryView, () => {
   statusFilter.value = ''
+  sortFilter.value = ''
   page.value = 1
   if (isHistoryView.value) {
     fetchPaymentHistory()
@@ -213,6 +479,21 @@ watch(search, () => {
 })
 
 watch(statusFilter, () => {
+  page.value = 1
+})
+
+watch(academicYearFilter, () => {
+  page.value = 1
+})
+
+watch(classFilter, () => {
+  if (selectedClassAcademicYear.value) {
+    academicYearFilter.value = selectedClassAcademicYear.value
+  }
+  page.value = 1
+})
+
+watch(sortFilter, () => {
   page.value = 1
 })
 
@@ -353,7 +634,15 @@ const formatPeriod = (bill) => {
 
 onMounted(() => {
   isMounted.value = true
-  fetchParentData().then(fetchPaymentHistory)
+  fetchParentData()
+  fetchParentSupport(true)
+  window.addEventListener('support-chat-updated', handleSupportUpdate)
+  window.addEventListener('open-parent-support', handleOpenParentSupport)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('support-chat-updated', handleSupportUpdate)
+  window.removeEventListener('open-parent-support', handleOpenParentSupport)
 })
 
 </script>
@@ -364,7 +653,7 @@ onMounted(() => {
     <!-- Teleport to Header for Global Search and Filters -->
     <Teleport v-if="isMounted" to="#header-actions-target">
       <div class="flex items-center justify-center w-full gap-4 relative mx-auto">
-        <div class="flex items-center justify-center gap-2 flex-1 max-w-2xl mx-auto">
+        <div class="flex flex-wrap items-center justify-center gap-2 flex-1 max-w-5xl mx-auto">
           
           <!-- Student Selector Dropdown -->
           <div class="relative w-64 group/student">
@@ -386,23 +675,53 @@ onMounted(() => {
                   :class="{'bg-indigo-50/50': selectedStudent?.id === s.id}"
                 >
                   <span class="text-xs font-bold text-slate-800" :class="{'text-indigo-600': selectedStudent?.id === s.id}">{{ s.name }}</span>
-                  <span class="text-[10px] font-medium text-slate-400">NISN: {{ s.nisn || '-' }}</span>
+                  <span class="text-[10px] font-medium text-slate-400">
+                    {{ s.class_name || 'Kelas belum diatur' }} • NISN: {{ s.nisn || '-' }}
+                  </span>
                 </button>
               </div>
             </transition>
           </div>
 
-          <div class="relative flex-1 group">
+          <div class="relative flex-1 min-w-[180px] group">
             <SearchIcon class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-600" />
-            <input v-model="search" type="text" placeholder="Cari tagihan..." class="search-input-premium" />
+            <input v-model="search" type="text" :placeholder="isHistoryView ? 'Cari transaksi...' : 'Cari tagihan...'" class="search-input-premium" />
           </div>
           
+          <div v-if="availableAcademicYears.length" class="relative">
+            <select v-model="academicYearFilter" class="appearance-none p-2.5 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500">
+              <option value="">Semua Tahun</option>
+              <option v-for="year in availableAcademicYears" :key="year" :value="year">{{ year }}</option>
+            </select>
+            <ChevronDownIcon class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div v-if="availableClassFilters.length" class="relative">
+            <select v-model="classFilter" class="appearance-none p-2.5 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500 max-w-[170px]">
+              <option value="">Semua Kelas</option>
+              <option v-for="item in availableClassFilters" :key="item.id" :value="item.id">{{ item.label }}</option>
+            </select>
+            <ChevronDownIcon class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          </div>
+
           <div v-if="!isHistoryView" class="relative">
-            <select v-model="statusFilter" class="appearance-none p-2.5 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500">
+            <FilterIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <select v-model="statusFilter" class="appearance-none p-2.5 pl-8 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500">
               <option value="">Semua Status</option>
+              <option value="outstanding">Ada Tunggakan</option>
+              <option value="overdue">Lewat Tempo</option>
               <option value="unpaid">Belum Lunas</option>
               <option value="partial">Sebagian</option>
               <option value="paid">Lunas</option>
+            </select>
+            <ChevronDownIcon class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+          </div>
+
+          <div class="relative">
+            <SortIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <select v-model="sortFilter" class="appearance-none p-2.5 pl-8 pr-8 bg-white text-slate-600 hover:bg-slate-50 rounded-xl border border-slate-200 shadow-sm transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer focus:outline-none focus:border-indigo-500">
+              <option value="">Urutan Default</option>
+              <option v-for="item in sortOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
             <ChevronDownIcon class="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           </div>
@@ -427,6 +746,7 @@ onMounted(() => {
          <div>
            <p class="text-[9px] font-black uppercase tracking-widest text-indigo-400">Siswa Terpilih</p>
            <p class="text-xs font-black text-indigo-700 leading-tight">{{ selectedStudent.name }}</p>
+           <p class="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mt-0.5">{{ currentStudentClassText }}</p>
            <p class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">Saldo: {{ formatCurrency(selectedStudent.deposit_balance || 0) }}</p>
          </div>
       </div>
@@ -435,7 +755,7 @@ onMounted(() => {
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div v-for="card in [
         { label: isHistoryView ? 'Total Transaksi' : 'Total Tagihan', value: selectedSummary.total },
-        { label: isHistoryView ? 'Via Midtrans' : 'Belum Lunas', value: selectedSummary.unpaid },
+        { label: isHistoryView ? 'Via Midtrans' : 'Ada Tunggakan', value: selectedSummary.unpaid },
         { label: isHistoryView ? 'Pakai Saldo' : 'Lewat Tempo', value: selectedSummary.overdue },
         { label: isHistoryView ? 'Total Dibayar' : 'Sisa Bayar', value: formatCurrency(selectedSummary.remaining), wide: true }
       ]" :key="card.label" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
@@ -512,6 +832,14 @@ onMounted(() => {
                   <p class="text-[10px] font-bold text-slate-400 mt-1 truncate max-w-[200px]">
                     {{ b.description || 'Tidak ada deskripsi' }}
                   </p>
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <span v-if="b.academic_year" class="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[8px] font-black uppercase tracking-wider">
+                      {{ b.academic_year }}
+                    </span>
+                    <span v-if="classLabelForAcademicYear(b.academic_year)" class="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg text-[8px] font-black uppercase tracking-wider max-w-[180px] truncate">
+                      {{ classLabelForAcademicYear(b.academic_year) }}
+                    </span>
+                  </div>
                 </div>
               </td>
               <td>
@@ -602,6 +930,11 @@ onMounted(() => {
                       </span>
                       <span v-if="paymentDetailNames(b).length === 0" class="px-2 py-1 bg-slate-100 rounded-lg text-[8px] font-black text-slate-500 uppercase tracking-wider">
                         Alokasi otomatis
+                      </span>
+                    </div>
+                    <div v-if="paymentAcademicYears(b).length" class="mt-1 flex flex-wrap gap-1.5">
+                      <span v-for="year in paymentAcademicYears(b).slice(0, 2)" :key="year" class="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[8px] font-black uppercase tracking-wider">
+                        {{ classLabelForAcademicYear(year) || year }}
                       </span>
                     </div>
                   </div>
@@ -713,6 +1046,109 @@ onMounted(() => {
           <PaidIcon v-else class="w-5 h-5 shrink-0" />
           <span class="text-xs font-bold leading-relaxed">{{ notification.message }}</span>
         </div>
+      </transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <button
+        @click="openSupportPanel"
+        class="fixed bottom-6 right-6 z-[2200] w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-2xl shadow-indigo-300/60 flex items-center justify-center hover:bg-indigo-700 transition-all"
+        title="CS Admin"
+      >
+        <ChatIcon class="w-6 h-6" />
+        <span v-if="supportUnread > 0" class="absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
+          {{ supportUnread }}
+        </span>
+      </button>
+
+      <transition name="dropdown">
+        <section
+          v-if="supportOpen"
+          class="fixed bottom-24 right-6 z-[2200] w-[min(420px,calc(100vw-32px))] bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
+        >
+          <header class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <ChatIcon class="w-5 h-5" />
+              </div>
+              <div>
+                <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">CS Admin</h3>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ supportConversation?.status || 'Belum ada tiket' }}</p>
+              </div>
+            </div>
+            <button @click="supportOpen = false" class="w-9 h-9 rounded-xl bg-white border border-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center">
+              <CloseIcon class="w-4 h-4" />
+            </button>
+          </header>
+
+          <div class="h-80 overflow-y-auto bg-slate-50/60 p-4 space-y-3 custom-scrollbar">
+            <div v-if="supportLoading" class="h-full flex items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Memuat chat...
+            </div>
+            <div v-else-if="supportMessages.length === 0" class="h-full flex items-center justify-center text-center p-6">
+              <div>
+                <ChatIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                <p class="text-xs font-black text-slate-700 uppercase tracking-wider">Belum ada pesan CS</p>
+                <p class="text-[10px] font-bold text-slate-400 mt-1">Pilih topik, lalu kirim pertanyaan singkat ke admin.</p>
+              </div>
+            </div>
+            <div
+              v-for="msg in supportMessages"
+              :key="msg.id"
+              :class="['flex', msg.sender_type === 'parent' ? 'justify-end' : 'justify-start']"
+            >
+              <div
+                :class="[
+                  'max-w-[82%] rounded-2xl px-4 py-3 text-xs font-semibold shadow-sm whitespace-pre-wrap leading-relaxed',
+                  msg.sender_type === 'parent'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white border border-slate-100 text-slate-700'
+                ]"
+              >
+                <p>{{ msg.message }}</p>
+                <p :class="['text-[9px] uppercase tracking-widest mt-2', msg.sender_type === 'parent' ? 'text-indigo-100' : 'text-slate-400']">
+                  {{ msg.sender_type === 'parent' ? 'Anda' : 'Admin' }} • {{ msg.delivery_status }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <footer class="p-4 border-t border-slate-100 bg-white space-y-3">
+            <div class="grid grid-cols-5 gap-1.5">
+              <button
+                v-for="topic in supportTopics"
+                :key="topic.value"
+                @click="supportTopic = topic.value"
+                :class="[
+                  'px-2 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all',
+                  supportTopic === topic.value
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                ]"
+              >
+                {{ topic.label }}
+              </button>
+            </div>
+            <textarea
+              v-model="supportDraft"
+              maxlength="500"
+              rows="3"
+              class="w-full resize-none bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all"
+              placeholder="Tulis pertanyaan singkat..."
+            ></textarea>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-[10px] font-bold text-slate-400">{{ supportDraft.length }}/500</span>
+              <button
+                @click="sendSupportMessage"
+                :disabled="supportSending || !supportDraft.trim()"
+                class="px-4 py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50"
+              >
+                <SendIcon class="w-4 h-4" />
+                {{ supportSending ? 'Mengirim' : 'Kirim' }}
+              </button>
+            </div>
+          </footer>
+        </section>
       </transition>
     </Teleport>
   </div>

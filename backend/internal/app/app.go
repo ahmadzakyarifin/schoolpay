@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	_ "github.com/ahmadzakyarifin/schoolpay/docs"
@@ -123,11 +126,44 @@ func NewApp(db *bun.DB, cfg *config.Config) *App {
 	api.Use(middleware.RateLimitMiddleware(redisClient, "global", rate.Limit(50), 100))
 	api.Use(middleware.IdempotencyMiddleware(redisClient))
 	api.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		dbStatus := "ok"
+		if err := db.PingContext(ctx); err != nil {
+			dbStatus = err.Error()
+		}
+
+		redisStatus := "ok"
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			redisStatus = err.Error()
+		}
+
+		statusCode := http.StatusOK
+		overall := "ok"
+		if dbStatus != "ok" || redisStatus != "ok" {
+			statusCode = http.StatusServiceUnavailable
+			overall = "degraded"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"status": overall,
+			"dependencies": gin.H{
+				"database": dbStatus,
+				"redis":    redisStatus,
+			},
+		})
 	})
 
 	// Initialize UserRepo early for AuthMiddleware
 	userRepo := userauthrepo.NewUserRepo(db)
+
+	wsGroup := api.Group("")
+	wsGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret, userRepo))
+	wsGroup.Use(middleware.RoleMiddleware("admin", "parent"))
+	wsGroup.GET("/ws", func(c *gin.Context) {
+		websocket.ServeWs(hub, c.Writer, c.Request, cfg.FrontendURL)
+	})
 
 	// Singletons for services with background workers/schedulers
 	payRepo := financerepo.NewPaymentRepo(db)
@@ -161,7 +197,7 @@ func NewApp(db *bun.DB, cfg *config.Config) *App {
 	parentGroup := api.Group("/parent")
 	parentGroup.Use(middleware.AuthMiddleware(cfg.JWTSecret, userRepo))
 	parentGroup.Use(middleware.RoleMiddleware("parent"))
-	parent.SetupParentRoutes(parentGroup, appInstance.DB, &appInstance.Cfg, msg, redisClient)
+	parent.SetupParentRoutes(parentGroup, appInstance.DB, &appInstance.Cfg, msg, redisClient, appInstance.Hub)
 
 	//  Finance Feature (Cross-role)
 	finGroup := api.Group("/finance")
@@ -179,7 +215,7 @@ func NewApp(db *bun.DB, cfg *config.Config) *App {
 	finGroup.GET("/payments/:id/receipt", payHdl.GetReceipt)
 
 	// 5. Webhook Router
-	webhook.RouterWebhookSetup(appInstance.Server.Group(""), appInstance.DB, &appInstance.Cfg, msg, appInstance.Hub, paySvc, sbSvc, finNotifSvc, auditSvc)
+	webhook.RouterWebhookSetup(appInstance.Server.Group(""), appInstance.DB, &appInstance.Cfg, msg, appInstance.Hub, paySvc, sbSvc, finNotifSvc, auditSvc, redisClient)
 
 	// 6. Swagger API Documentation
 	g.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

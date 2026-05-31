@@ -3,12 +3,14 @@ import { ref } from 'vue'
 import { 
   ShieldCheck as AdminIcon, 
   UserCheck as ParentIcon, 
-  Calendar as CalendarAltIcon, 
   Users as StudentsIcon,
   RotateCcw as ResetIcon,
   Trash as TrashIcon,
   Edit as EditIcon,
-  Lock as LockIcon,
+  Send as SendIcon,
+  Mail as MailIcon,
+  MessageSquare as WhatsAppIcon,
+  ChevronDown as ChevronDownIcon,
   Check as CheckIcon,
   X as CloseIcon
 } from 'lucide-vue-next'
@@ -25,6 +27,7 @@ const props = defineProps({
 })
 
 const activeStudentListId = ref(null)
+const activeResendMenuId = ref(null)
 const emit = defineEmits([
 	'edit', 
 	'delete', 
@@ -33,7 +36,8 @@ const emit = defineEmits([
 	'toggle-select-all', 
 	'toggle-select-user', 
 	'go-to-student', 
-	'go-to-details'
+	'go-to-details',
+  'resend-notification'
 ])
 
 const parseStudents = (studentNamesStr) => {
@@ -59,6 +63,16 @@ const toggleResendMenu = (userId) => {
     activeResendMenuId.value = userId
     activeStudentListId.value = null // Close student list if open
   }
+}
+
+const canResendActivation = (user) => {
+  if (props.status === 'trash' || !user?.is_active || user?.has_password) return false
+  return user.role !== 'parent' || Number(user.student_count || 0) > 0
+}
+
+const resendActivation = (user, channel) => {
+  emit('resend-notification', { user, channel })
+  activeResendMenuId.value = null
 }
 
 const isAllSelected = () => {
@@ -195,6 +209,51 @@ const isAllSelected = () => {
           <td class="px-4 py-4 text-right">
             <div class="flex items-center justify-end gap-1 px-4">
               <template v-if="status !== 'trash'">
+                <div v-if="canResendActivation(user)" class="relative">
+                  <button
+                    @click.stop="toggleResendMenu(user.id)"
+                    class="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all flex items-center gap-0.5"
+                    title="Kirim ulang aktivasi"
+                  >
+                    <SendIcon class="w-4 h-4" />
+                    <ChevronDownIcon class="w-2.5 h-2.5" />
+                  </button>
+
+                  <transition name="fade-scale">
+                    <div
+                      v-if="activeResendMenuId === user.id"
+                      class="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-[0_15px_45px_rgba(15,23,42,0.18)] border border-slate-100 z-[120] overflow-hidden p-2 origin-top-right"
+                    >
+                      <div class="px-3 py-2 border-b border-slate-50 mb-1 flex items-center justify-between">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aktivasi Akun</h4>
+                        <button @click.stop="activeResendMenuId = null" class="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-all">
+                          <CloseIcon class="w-3 h-3" />
+                        </button>
+                      </div>
+                      <button
+                        @click.stop="resendActivation(user, 'whatsapp')"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 transition-all text-left"
+                      >
+                        <WhatsAppIcon class="w-4 h-4 text-emerald-600" />
+                        <span class="text-[11px] font-bold">WhatsApp</span>
+                      </button>
+                      <button
+                        @click.stop="resendActivation(user, 'email')"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 transition-all text-left"
+                      >
+                        <MailIcon class="w-4 h-4 text-indigo-600" />
+                        <span class="text-[11px] font-bold">Email</span>
+                      </button>
+                      <button
+                        @click.stop="resendActivation(user, 'all')"
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-slate-700 transition-all text-left"
+                      >
+                        <SendIcon class="w-4 h-4 text-slate-600" />
+                        <span class="text-[11px] font-black">WA & Email</span>
+                      </button>
+                    </div>
+                  </transition>
+                </div>
                 <button @click="emit('edit', user)" class="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all" title="Ubah">
                   <EditIcon class="w-4 h-4" />
                 </button>

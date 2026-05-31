@@ -66,18 +66,14 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 	if depositApplied >= amount {
 		return nil, fmt.Errorf("gagal: pembayaran Midtrans membutuhkan sisa nominal setelah potongan saldo")
 	}
-	role := ""
-	if s.audit != nil {
-		userID, _, auditRole, _, _ := utils.GetAuditMeta(ctx)
-		role = auditRole
-		if role == "parent" {
-			student, err := s.stuRepo.FindByID(ctx, studentID)
-			if err != nil || student == nil {
-				return nil, fmt.Errorf("siswa tidak ditemukan")
-			}
-			if student.ParentID != userID {
-				return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
-			}
+	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	if role == "parent" {
+		student, err := s.stuRepo.FindByID(ctx, studentID)
+		if err != nil || student == nil {
+			return nil, fmt.Errorf("siswa tidak ditemukan")
+		}
+		if student.ParentID != userID {
+			return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
 		}
 	}
 
@@ -375,18 +371,14 @@ func (s *paymentService) GetReceipt(ctx context.Context, paymentID uint) (*domai
 		return nil, err
 	}
 
-	role := ""
-	if s.audit != nil {
-		userID, _, auditRole, _, _ := utils.GetAuditMeta(ctx)
-		role = auditRole
-		if role == "parent" {
-			student, err := s.stuRepo.FindByID(ctx, p.StudentID)
-			if err != nil || student == nil {
-				return nil, fmt.Errorf("siswa tidak ditemukan")
-			}
-			if student.ParentID != userID {
-				return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
-			}
+	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	if role == "parent" {
+		student, err := s.stuRepo.FindByID(ctx, p.StudentID)
+		if err != nil || student == nil {
+			return nil, fmt.Errorf("siswa tidak ditemukan")
+		}
+		if student.ParentID != userID {
+			return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
 		}
 	}
 
@@ -452,8 +444,8 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 			if p.IsBypassRule {
 				return fmt.Errorf("unauthorized: bypass aturan pembayaran hanya boleh dilakukan admin")
 			}
-			if p.Channel != "gateway" && p.Method != "Saldo Deposit" {
-				return fmt.Errorf("unauthorized: orang tua hanya boleh membayar lewat Midtrans atau memakai potongan saldo deposit")
+			if p.Channel != "deposit" || p.Method != "Saldo Deposit" || p.DepositApplied != p.Amount {
+				return fmt.Errorf("unauthorized: pembayaran parent langsung hanya boleh memakai Saldo Deposit. Pembayaran Midtrans wajib dibuat lewat payment-intent")
 			}
 			student, err := s.stuRepo.FindByID(ctx, studentID)
 			if err != nil || student == nil {
@@ -662,23 +654,21 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 			if student != nil {
 				studentName = student.Name
 			}
-			s.hub.Broadcast("NEW_PAYMENT", map[string]interface{}{"payment_id": p.ID, "student_name": studentName, "amount": p.Amount, "timestamp": time.Now().Format(time.RFC3339)})
+			s.hub.BroadcastToRoles("NEW_PAYMENT", map[string]interface{}{"payment_id": p.ID, "student_name": studentName, "amount": p.Amount, "timestamp": time.Now().Format(time.RFC3339)}, "admin")
 		}
 		return nil
 	})
 }
 
 func (s *paymentService) GetHistory(ctx context.Context, studentID uint) ([]domain.Payment, error) {
-	if s.audit != nil {
-		userID, _, role, _, _ := utils.GetAuditMeta(ctx)
-		if role == "parent" {
-			student, err := s.stuRepo.FindByID(ctx, studentID)
-			if err != nil || student == nil {
-				return nil, fmt.Errorf("siswa tidak ditemukan")
-			}
-			if student.ParentID != userID {
-				return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
-			}
+	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	if role == "parent" {
+		student, err := s.stuRepo.FindByID(ctx, studentID)
+		if err != nil || student == nil {
+			return nil, fmt.Errorf("siswa tidak ditemukan")
+		}
+		if student.ParentID != userID {
+			return nil, fmt.Errorf("unauthorized: Anda tidak memiliki akses ke data siswa ini")
 		}
 	}
 	return s.repo.FindByStudent(ctx, studentID)

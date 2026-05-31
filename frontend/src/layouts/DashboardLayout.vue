@@ -8,7 +8,7 @@
         </div>
         <div>
           <h1 class="text-xl font-black text-slate-800 tracking-tight">SchoolPay</h1>
-          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Admin Panel</p>
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ panelLabel }}</p>
         </div>
       </div>
       
@@ -61,6 +61,10 @@
             <ReceiptIcon class="w-5 h-5" />
             <span>Riwayat Bayar</span>
           </router-link>
+          <button @click="openParentSupport" class="nav-link w-full text-left">
+            <MessageCircleIcon class="w-5 h-5" />
+            <span>CS Admin</span>
+          </button>
         </template>
       </nav>
 
@@ -78,7 +82,7 @@
         <!-- Left: Page Title -->
         <div class="shrink-0 min-w-[150px]">
           <h2 class="text-lg font-black text-slate-800 tracking-tight capitalize leading-tight">{{ $route.name?.replace('-', ' ') || 'Management' }}</h2>
-          <p class="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-0.5">Industrial Ecosystem</p>
+          <p class="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-0.5">{{ headerSubtitle }}</p>
         </div>
         
         <!-- Middle: Search & Filters (Teleport Target) -->
@@ -268,7 +272,7 @@ import {
 } from 'lucide-vue-next'
 import axios from 'axios'
 import { getOfflineOutboxCount, syncOfflineOutbox } from '../utils/offlineSync'
-import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, computed, watch } from 'vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -281,6 +285,8 @@ const toast = useToast()
 const checkingConnection = ref(false)
 const waActionLoading = ref(false)
 const offlinePendingCount = ref(0)
+const panelLabel = computed(() => authStore.user?.role === 'parent' ? 'Parent Portal' : 'Admin Panel')
+const headerSubtitle = computed(() => authStore.user?.role === 'parent' ? 'Portal Orang Tua' : 'Industrial Ecosystem')
 
 let waInterval = null
 let ws = null
@@ -507,7 +513,7 @@ const handleOfflineSynced = async (event) => {
 }
 
 const initWebSocket = () => {
-  if (authStore.user?.role !== 'admin') return
+  if (!['admin', 'parent'].includes(authStore.user?.role)) return
 
   const token = authStore.token
   if (!token) return
@@ -536,7 +542,7 @@ const initWebSocket = () => {
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data)
-      if (msg.topic === 'NEW_PAYMENT') {
+      if (msg.topic === 'NEW_PAYMENT' && authStore.user?.role === 'admin') {
         const data = msg.data
         toast.success(
           'Pembayaran Baru!',
@@ -557,7 +563,9 @@ const initWebSocket = () => {
       } else if (msg.topic === 'NOTIFICATION_STATUS_CHANGED') {
         window.dispatchEvent(new CustomEvent('notification-status-changed', { detail: msg.data }))
       } else if (msg.topic === 'SUPPORT_CHAT_UPDATED') {
-        toast.info('Chat CS baru', `Pesan dari ${msg.data.phone}`)
+        if (authStore.user?.role === 'admin') {
+          toast.info('Chat CS baru', msg.data.phone ? `Pesan dari ${msg.data.phone}` : 'Ada pembaruan chat CS')
+        }
         window.dispatchEvent(new CustomEvent('support-chat-updated', { detail: msg.data }))
       }
     } catch (err) {
@@ -573,6 +581,14 @@ const initWebSocket = () => {
   ws.onerror = (err) => {
     console.error('WS Error:', err)
   }
+}
+
+const openParentSupport = async () => {
+  if (!route.path.startsWith('/parent')) {
+    await router.push('/parent/dashboard')
+  }
+  await nextTick()
+  window.dispatchEvent(new CustomEvent('open-parent-support'))
 }
 
 const handleLogout = () => {

@@ -3,6 +3,7 @@ package auth
 import (
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
+	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	authhandler "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/delivery"
@@ -22,6 +23,8 @@ func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg uti
 	auditSvc := auditusecase.NewAuditLogService(auditRepo)
 	svc := authusecase.NewAuthService(repo, msg, auditSvc, asynqClient)
 	hdl := authhandler.NewAuthHandler(svc, cfg)
+	studentRepo := academicrepo.NewStudentRepo(db)
+	profileHdl := authhandler.NewProfileHandler(db, userRepo, studentRepo, auditSvc)
 
 	loginLimit := middleware.RateLimitMiddleware(redisClient, "auth_login", rate.Limit(5.0/60.0), 5)
 	forgotPasswordLimit := middleware.RateLimitMiddleware(redisClient, "auth_forgot_password", rate.Limit(3.0/60.0), 3)
@@ -40,6 +43,9 @@ func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg uti
 	authSecured := g.Group("/auth")
 	authSecured.Use(middleware.AuthMiddleware(cfg.JWTSecret, userRepo))
 	{
+		authSecured.GET("/me", profileHdl.Me)
+		authSecured.PUT("/profile", profileHdl.UpdateProfile)
+		authSecured.POST("/profile/photo", profileHdl.UploadPhoto)
 		authSecured.POST("/change-password", hdl.ChangePassword)
 	}
 }

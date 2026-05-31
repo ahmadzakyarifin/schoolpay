@@ -250,7 +250,7 @@ func (h *UserHandler) ResendNotification(c *gin.Context) {
 		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "notifikasi berhasil dikirim ulang", nil)
+	utils.SuccessResponse(c, http.StatusOK, "link aktivasi berhasil dikirim ulang", nil)
 }
 
 func (h *UserHandler) BulkResendNotification(c *gin.Context) {
@@ -270,7 +270,7 @@ func (h *UserHandler) BulkResendNotification(c *gin.Context) {
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d notifikasi diproses", result.Sent), result)
+	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d link aktivasi diproses", result.Sent), result)
 }
 
 func (h *UserHandler) BulkDelete(c *gin.Context) {
@@ -385,4 +385,3 @@ func (h *UserHandler) CheckUnique(c *gin.Context) {
 		"is_unique": isUnique,
 	})
 }
-
