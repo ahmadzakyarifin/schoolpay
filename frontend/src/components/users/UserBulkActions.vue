@@ -27,7 +27,7 @@ const eligibleUsers = computed(() => {
   return props.selectedUsers.filter(u => {
     const isActive = u.is_active
     const isParentWithChild = u.role !== 'parent' || (u.student_count && u.student_count > 0)
-    const hasNoPassword = !u.has_password
+    const hasNoPassword = u.has_password === false
     return isActive && isParentWithChild && hasNoPassword
   })
 })

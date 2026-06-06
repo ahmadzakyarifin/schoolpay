@@ -66,7 +66,7 @@ const toggleResendMenu = (userId) => {
 }
 
 const canResendActivation = (user) => {
-  if (props.status === 'trash' || !user?.is_active || user?.has_password) return false
+  if (props.status === 'trash' || !user?.is_active || user?.has_password !== false) return false
   return user.role !== 'parent' || Number(user.student_count || 0) > 0
 }
 
