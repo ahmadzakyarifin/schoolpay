@@ -11,27 +11,28 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
+	notificationdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
-	"github.com/hibiken/asynq"
+	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
 const TaskAuthEmail = "email:auth"
 
 type AuthService interface {
-	Login(ctx context.Context, req dto.LoginRequest, jwtSecret string) (*dto.LoginResponse, error)
-	RefreshToken(ctx context.Context, req dto.RefreshTokenRequest, jwtSecret string) (*dto.LoginResponse, error)
-	ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, cfg *config.Config) error
-	ResetPassword(ctx context.Context, req dto.ResetPasswordRequest) error
-	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
+	Login(ctx context.Context, req dto.LoginRequest, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error)
+	ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, audit dto.AuditMeta, cfg *config.Config) error
+	ResetPassword(ctx context.Context, req dto.ResetPasswordRequest, audit dto.AuditMeta) error
+	ChangePassword(ctx context.Context, userID uint, req dto.ChangePasswordRequest, audit dto.AuditMeta) error
 	Logout(ctx context.Context, refreshToken string) error
 }
 
 type authService struct {
-	r           repository.AuthRepo
-	messenger   utils.Messenger
-	audit       auditusecase.AuditLogService
-	asynqClient *asynq.Client
+	r         repository.AuthRepo
+	messenger utils.Messenger
+	audit     auditusecase.AuditLogService
 }
 
 type AuthEmailJob struct {
@@ -42,43 +43,38 @@ type AuthEmailJob struct {
 	Body    string `json:"body"`
 }
 
-func NewAuthService(repo repository.AuthRepo, msg utils.Messenger, audit auditusecase.AuditLogService, asynqClient *asynq.Client) AuthService {
+func NewAuthService(repo repository.AuthRepo, msg utils.Messenger, audit auditusecase.AuditLogService) AuthService {
 	s := &authService{
-		r:           repo,
-		messenger:   msg,
-		audit:       audit,
-		asynqClient: asynqClient,
+		r:         repo,
+		messenger: msg,
+		audit:     audit,
 	}
 	return s
 }
 
-func (s *authService) Login(ctx context.Context, req dto.LoginRequest, jwtSecret string) (*dto.LoginResponse, error) {
+func (s *authService) Login(ctx context.Context, req dto.LoginRequest, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
 	user, err := s.r.FindByEmail(ctx, req.Email)
 	if err != nil {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), 0, "Anonymous", "anonymous", "LOGIN_FAILED", "auth", 0, nil, map[string]interface{}{"email": req.Email, "reason": "user_not_found_or_error"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "LOGIN_FAILED", "auth", 0, nil, map[string]interface{}{"email": req.Email}, "user_not_found_or_error")
 		}
 		return nil, errors.New("email atau password salah")
 	}
 
+	// Set UserID ke audit meta setelah user ditemukan
+	audit.UserID = &user.ID
+
 	// Cek status aktif dulu agar user tahu akunnya dicekal sebelum cek password
 	if !user.IsActive {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "LOGIN_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "user_inactive"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "LOGIN_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "user_inactive")
 		}
 		return nil, errors.New("akun Anda belum aktif atau telah dinonaktifkan. Silakan hubungi Admin.")
 	}
 
-	passHash := ""
-	if user.PasswordHash != nil {
-		passHash = *user.PasswordHash
-	}
-	if !utils.CheckPassword(req.Password, passHash) {
+	if !utils.CheckPassword(req.Password, user.PasswordHash) {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "LOGIN_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "incorrect_password"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "LOGIN_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "incorrect_password")
 		}
 		return nil, errors.New("email atau password salah")
 	}
@@ -87,7 +83,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, jwtSecret
 	if err != nil {
 		return nil, errors.New("gagal membuat access token")
 	}
-	refreshToken, expiry, err := utils.GenerateRefreshToken(user.ID, user.Email, user.Role, jwtSecret)
+	refreshToken, expiry, err := utils.GenerateRefreshToken()
 	if err != nil {
 		return nil, errors.New("gagal membuat refresh token")
 	}
@@ -97,8 +93,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, jwtSecret
 	}
 
 	if s.audit != nil {
-		_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-		_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "LOGIN", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, ipAddress, userAgent)
+		_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "LOGIN", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "user berhasil login")
 	}
 
 	return &dto.LoginResponse{
@@ -114,21 +109,13 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, jwtSecret
 	}, nil
 }
 
-func (s *authService) RefreshToken(ctx context.Context, req dto.RefreshTokenRequest, jwtSecret string) (*dto.LoginResponse, error) {
-	claims, err := utils.ValidateToken(req.RefreshToken, jwtSecret)
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
+	storedUserID, err := s.r.FindRefreshToken(ctx, refreshToken)
 	if err != nil {
-		return nil, errors.New("token tidak valid")
+		return nil, errors.New("session tidak valid atau sudah kadaluarsa")
 	}
 
-	storedUserID, err := s.r.FindRefreshToken(ctx, req.RefreshToken)
-	if err != nil {
-		return nil, errors.New("session tidak ditemukan")
-	}
-	if storedUserID != claims.UserID {
-		return nil, errors.New("session tidak valid")
-	}
-
-	user, err := s.r.FindUserByID(ctx, claims.UserID)
+	user, err := s.r.FindUserByID(ctx, storedUserID)
 	if err != nil {
 		return nil, errors.New("user tidak ditemukan")
 	}
@@ -141,19 +128,31 @@ func (s *authService) RefreshToken(ctx context.Context, req dto.RefreshTokenRequ
 	if err != nil {
 		return nil, errors.New("gagal membuat access token baru")
 	}
-	newRefreshToken, expiry, err := utils.GenerateRefreshToken(user.ID, user.Email, user.Role, jwtSecret)
+	newRefreshToken, expiry, err := utils.GenerateRefreshToken()
 	if err != nil {
 		return nil, errors.New("gagal membuat refresh token baru")
 	}
 
-	_ = s.r.DeleteRefreshToken(ctx, req.RefreshToken)
-	if err := s.r.SaveRefreshToken(ctx, user.ID, newRefreshToken, expiry); err != nil {
+	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		repoTx := s.r.WithTx(tx)
+		if err := repoTx.RotateRefreshToken(ctx, refreshToken); err != nil {
+			return err
+		}
+		if err := repoTx.SaveRefreshToken(ctx, user.ID, newRefreshToken, expiry); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
 		return nil, errors.New("gagal menyimpan session")
 	}
 
+	// Set UserID ke audit meta
+	audit.UserID = &user.ID
+
 	if s.audit != nil {
-		_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-		_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "REFRESH_TOKEN", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, ipAddress, userAgent)
+		_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "REFRESH_TOKEN", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "refresh token berhasil")
 	}
 
 	return &dto.LoginResponse{
@@ -163,20 +162,63 @@ func (s *authService) RefreshToken(ctx context.Context, req dto.RefreshTokenRequ
 	}, nil
 }
 
-func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, cfg *config.Config) error {
-	user, err := s.r.FindByEmail(ctx, req.Email)
+func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, audit dto.AuditMeta, cfg *config.Config) error {
+	email := strings.TrimSpace(req.Email)
+	user, err := s.r.FindByEmail(ctx, email)
 	if err != nil {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), 0, "Anonymous", "anonymous", "FORGOT_PASSWORD_FAILED", "auth", 0, nil, map[string]interface{}{"email": req.Email, "reason": "email_not_found_or_error"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "FORGOT_PASSWORD_FAILED", "auth", 0, nil, map[string]interface{}{"email": req.Email}, "email_not_found_or_error")
 		}
 		return nil
 	}
 
-	const resetPasswordTokenTTL = 15 * time.Minute
+	if !user.IsActive {
+		if s.audit != nil {
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "FORGOT_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "user_inactive")
+		}
 
-	token := utils.GenerateUUID()
-	expiresAt := time.Now().Add(resetPasswordTokenTTL)
+		body := fmt.Sprintf(`
+		<div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; text-align: center; background-color: #f8fafc; border-radius: 16px;">
+			<div style="background-color: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+				<h2 style="color: #e11d48; margin-top: 0; font-size: 24px;">Akun SchoolPay Dinonaktifkan</h2>
+				<p style="color: #64748b; font-size: 16px; line-height: 1.6; margin-bottom: 30px; text-align: left;">
+					Halo <strong>%s</strong>,<br><br>
+					Kami mendeteksi adanya permintaan untuk menyetel ulang password akun SchoolPay Anda.<br><br>
+					Namun, saat ini status akun Anda sedang <strong>tidak aktif / dinonaktifkan</strong>. Oleh karena itu, permintaan reset password tidak dapat diproses.<br><br>
+					Jika Anda tidak melakukan permintaan ini, Anda dapat mengabaikan email ini. Jika Anda ingin mengaktifkan kembali akun Anda, silakan hubungi Administrator sekolah atau tim bantuan SchoolPay.
+				</p>
+			</div>
+		</div>
+		`, user.Name)
+
+		job := AuthEmailJob{
+			UserID:  user.ID,
+			Email:   user.Email,
+			Name:    user.Name,
+			Subject: "Permintaan Reset Password - Akun Dinonaktifkan",
+			Body:    body,
+		}
+
+		payload, err := json.Marshal(job)
+		if err == nil {
+			bj := &notificationdomain.BackgroundJob{
+				TaskName: TaskAuthEmail,
+				Payload:  string(payload),
+				Status:   "pending",
+			}
+			if _, err := s.r.GetDB().NewInsert().Model(bj).Exec(ctx); err != nil {
+				fmt.Printf("Error inserting background job: %v\n", err)
+			}
+		}
+
+		return nil
+	}
+
+	audit.UserID = &user.ID
+
+	token := uuid.New().String()
+	// sisa waktu link hangus
+	expiresAt := time.Now().Add(15 * time.Minute)
 
 	if err := s.r.SaveAuthToken(ctx, user.ID, token, "reset_password", expiresAt); err != nil {
 		return errors.New("gagal memproses permintaan")
@@ -207,8 +249,7 @@ func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPassword
 	`, user.Name, link, link, link)
 
 	if s.audit != nil {
-		_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-		_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "FORGOT_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, ipAddress, userAgent)
+		_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "FORGOT_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "forgot password link generated")
 	}
 
 	job := AuthEmailJob{
@@ -222,94 +263,111 @@ func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPassword
 	if err != nil {
 		return errors.New("gagal memproses permintaan email")
 	}
-	if _, err := s.asynqClient.Enqueue(asynq.NewTask(TaskAuthEmail, payload, asynq.MaxRetry(3))); err != nil {
+
+	bj := &notificationdomain.BackgroundJob{
+		TaskName: TaskAuthEmail,
+		Payload:  string(payload),
+		Status:   "pending",
+	}
+	if _, err := s.r.GetDB().NewInsert().Model(bj).Exec(ctx); err != nil {
 		return errors.New("gagal menjadwalkan pengiriman email")
 	}
 
 	return nil
 }
 
-func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRequest) error {
+func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRequest, audit dto.AuditMeta) error {
+	if req.Password != req.ConfirmPassword {
+		return errors.New("password dan konfirmasi password tidak cocok")
+	}
+
 	userID, err := s.r.FindAuthToken(ctx, req.Token, "reset_password")
 	if err != nil {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), 0, "Anonymous", "anonymous", "RESET_PASSWORD_FAILED", "auth", 0, nil, map[string]interface{}{"token": req.Token, "reason": "invalid_token_or_expired"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "RESET_PASSWORD_FAILED", "auth", 0, nil, map[string]interface{}{"token": req.Token}, "invalid_token_or_expired")
 		}
 		return errors.New("token tidak valid")
 	}
 
+	// Set UserID ke audit meta
+	audit.UserID = &userID
+
 	hashed, err := utils.HashPassword(req.Password)
 	if err != nil {
 		if s.audit != nil {
-			user, _ := s.r.FindUserByID(ctx, userID)
-			if user != nil {
-				_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-				_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "RESET_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "password_hash_failed"}, ipAddress, userAgent)
-			}
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "RESET_PASSWORD_FAILED", "auth", userID, nil, nil, "password_hash_failed")
 		}
 		return errors.New("gagal memproses password baru")
 	}
-	if err := s.r.UpdatePassword(ctx, userID, hashed); err != nil {
+	
+	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		repoTx := s.r.WithTx(tx)
+		if err := repoTx.UpdatePassword(ctx, userID, hashed); err != nil {
+			return err
+		}
+		_ = repoTx.DeleteAuthToken(ctx, req.Token, "reset_password")
+		_ = repoTx.DeleteAllUserRefreshTokens(ctx, userID)
+		return nil
+	})
+
+	if err != nil {
 		if s.audit != nil {
-			user, _ := s.r.FindUserByID(ctx, userID)
-			if user != nil {
-				_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-				_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "RESET_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "database_update_failed"}, ipAddress, userAgent)
-			}
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "RESET_PASSWORD_FAILED", "auth", userID, nil, nil, "database_update_failed")
 		}
 		return errors.New("gagal memperbarui password")
 	}
 
 	user, _ := s.r.FindUserByID(ctx, userID)
 	if s.audit != nil && user != nil {
-		_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-		_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "RESET_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, ipAddress, userAgent)
+		_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "RESET_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "password reset successfully")
 	}
-
-	_ = s.r.MarkTokenAsUsed(ctx, req.Token, "reset_password")
-	_ = s.r.DeleteAllUserRefreshTokens(ctx, userID)
 
 	return nil
 }
 
-func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error {
+func (s *authService) ChangePassword(ctx context.Context, userID uint, req dto.ChangePasswordRequest, audit dto.AuditMeta) error {
+	if req.Password != req.ConfirmPassword {
+		return errors.New("password dan konfirmasi password tidak cocok")
+	}
+
 	user, err := s.r.FindUserByID(ctx, userID)
 	if err != nil || user == nil {
 		return errors.New("user tidak ditemukan")
 	}
 
-	passHash := ""
-	if user.PasswordHash != nil {
-		passHash = *user.PasswordHash
-	}
-	if !utils.CheckPassword(currentPassword, passHash) {
+	// Set UserID ke audit meta
+	audit.UserID = &userID
+
+	if !utils.CheckPassword(req.CurrentPassword, user.PasswordHash) {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "incorrect_current_password"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "incorrect_current_password")
 		}
 		return errors.New("password saat ini tidak cocok")
 	}
 
-	hashed, err := utils.HashPassword(newPassword)
+	hashed, err := utils.HashPassword(req.Password)
 	if err != nil {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "password_hash_failed"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "password_hash_failed")
 		}
 		return errors.New("gagal memproses password baru")
 	}
-	err = s.r.UpdatePassword(ctx, userID, hashed)
+	
+	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		repoTx := s.r.WithTx(tx)
+		if err := repoTx.UpdatePassword(ctx, userID, hashed); err != nil {
+			return err
+		}
+		return repoTx.DeleteAllUserRefreshTokens(ctx, userID)
+	})
+	
 	if err == nil {
-		_ = s.r.DeleteAllUserRefreshTokens(ctx, userID)
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "CHANGE_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "CHANGE_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "password changed successfully")
 		}
 	} else {
 		if s.audit != nil {
-			_, _, _, ipAddress, userAgent := utils.GetAuditMeta(ctx)
-			_ = s.audit.Log(ctx, s.r.GetDB(), user.ID, user.Name, user.Role, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email, "reason": "database_update_failed"}, ipAddress, userAgent)
+			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "CHANGE_PASSWORD_FAILED", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "database_update_failed")
 		}
 	}
 	return err

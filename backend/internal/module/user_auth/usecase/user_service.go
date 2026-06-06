@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 	"github.com/xuri/excelize/v2"
 )
@@ -49,18 +51,10 @@ type userService struct {
 	notiRepo    notificationrepo.NotificationRepo
 	studentRepo academicrepo.StudentRepo
 	audit       auditusecase.AuditLogService
-	jobChan     chan userNotifyJob
-}
-
-type userNotifyJob struct {
-	user        *domain.User
-	studentName string
-	cfg         *config.Config
-	channel     string
 }
 
 func NewUserService(db *bun.DB, repo repository.UserRepo, authRepo repository.AuthRepo, msg utils.Messenger, noti notificationrepo.NotificationRepo, stuRepo academicrepo.StudentRepo, audit auditusecase.AuditLogService) UserService {
-	s := &userService{
+	return &userService{
 		db:          db,
 		repo:        repo,
 		authRepo:    authRepo,
@@ -68,12 +62,7 @@ func NewUserService(db *bun.DB, repo repository.UserRepo, authRepo repository.Au
 		notiRepo:    noti,
 		studentRepo: stuRepo,
 		audit:       audit,
-		jobChan:     make(chan userNotifyJob, 100),
 	}
-	for i := 0; i < 5; i++ {
-		go s.notificationWorker()
-	}
-	return s
 }
 
 func (s *userService) GetAll(ctx context.Context, role string) ([]domain.User, error) {
@@ -94,8 +83,8 @@ func userAuditValues(user *domain.User) map[string]interface{} {
 	}
 
 	var birthDate interface{}
-	if user.BirthDate != nil && !user.BirthDate.Time().IsZero() {
-		birthDate = user.BirthDate.Time().Format("2006-01-02")
+	if user.BirthDate != nil && !user.BirthDate.IsZero() {
+		birthDate = user.BirthDate.Format("2006-01-02")
 	}
 
 	return map[string]interface{}{
@@ -174,12 +163,18 @@ func (s *userService) Create(ctx context.Context, user *domain.User, cfg *config
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			_ = s.audit.Log(ctx, s.db, userID, userName, role, "CREATE", "users", user.ID, nil, userAuditValues(user), ipAddress, userAgent)
 		}
 
 		if user.IsActive {
-			s.jobChan <- userNotifyJob{user: user, cfg: cfg}
+			payloadBytes, _ := json.Marshal(map[string]interface{}{"user_id": user.ID, "channel": ""})
+			job := &notificationdomain.BackgroundJob{
+				TaskName: "auth:user_activation",
+				Payload:  string(payloadBytes),
+				Status:   "pending",
+			}
+			_, _ = tx.NewInsert().Model(job).Exec(ctx)
 		}
 		return nil
 	})
@@ -242,7 +237,7 @@ func (s *userService) Update(ctx context.Context, user *domain.User, cfg *config
 	}
 
 	if existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "UPDATE", "users", user.ID, userAuditValues(existing), userAuditValues(user), ipAddress, userAgent)
 	}
 
@@ -272,7 +267,7 @@ func (s *userService) Delete(ctx context.Context, id uint) error {
 
 	err = s.repo.Delete(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive, "status": "active"}
 		newVals := map[string]interface{}{"is_active": false, "status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "users", id, oldVals, newVals, ipAddress, userAgent)
@@ -293,7 +288,7 @@ func (s *userService) BulkDelete(ctx context.Context, ids []uint) error {
 
 	err := s.repo.BulkDelete(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "active"}
 			newVals := map[string]interface{}{"status": "deleted"}
@@ -307,7 +302,7 @@ func (s *userService) Restore(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.Restore(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive, "status": "deleted"}
 		newVals := map[string]interface{}{"is_active": true, "status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "users", id, oldVals, newVals, ipAddress, userAgent)
@@ -318,7 +313,7 @@ func (s *userService) Restore(ctx context.Context, id uint) error {
 func (s *userService) BulkRestore(ctx context.Context, ids []uint) error {
 	err := s.repo.BulkRestore(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}
@@ -347,7 +342,7 @@ func (s *userService) ActivateAccount(ctx context.Context, token string, passwor
 	_ = s.authRepo.DeleteAuthToken(ctx, token, "activation")
 	user, err := s.repo.FindByID(ctx, userID)
 	if err == nil && user != nil && s.audit != nil {
-		userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		_ = s.audit.Log(ctx, s.db, userIDMeta, userNameMeta, roleMeta, "ACTIVATE_ACCOUNT", "users", user.ID, nil, map[string]interface{}{"is_active": true}, ipAddress, userAgent)
 	}
 	return user, err
@@ -357,7 +352,7 @@ func (s *userService) ToggleStatus(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.ToggleStatus(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive}
 		newVals := map[string]interface{}{"is_active": !existing.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "TOGGLE_STATUS", "users", id, oldVals, newVals, ipAddress, userAgent)
@@ -384,11 +379,17 @@ func (s *userService) ResendNotification(ctx context.Context, id uint, channel s
 	}
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESEND_ACTIVATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
 	}
 
-	s.jobChan <- userNotifyJob{user: user, cfg: cfg, channel: channel}
+	payloadBytes, _ := json.Marshal(map[string]interface{}{"user_id": user.ID, "channel": channel})
+	job := &notificationdomain.BackgroundJob{
+		TaskName: "auth:user_activation",
+		Payload:  string(payloadBytes),
+		Status:   "pending",
+	}
+	_, _ = s.db.NewInsert().Model(job).Exec(ctx)
 	return nil
 }
 
@@ -434,17 +435,23 @@ func (s *userService) BulkResendNotification(ctx context.Context, ids []uint, ch
 		// Jika lolos, kirim ke job queue
 		result.Sent++
 		if s.audit != nil {
-			userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			_ = s.audit.Log(ctx, s.db, userIDMeta, userNameMeta, roleMeta, "BULK_RESEND_ACTIVATION", "users", id, nil, map[string]interface{}{"channel": channel}, ipAddress, userAgent)
 		}
-		s.jobChan <- userNotifyJob{user: user, cfg: cfg, channel: channel}
+		payloadBytes, _ := json.Marshal(map[string]interface{}{"user_id": user.ID, "channel": channel})
+		job := &notificationdomain.BackgroundJob{
+			TaskName: "auth:user_activation",
+			Payload:  string(payloadBytes),
+			Status:   "pending",
+		}
+		_, _ = s.db.NewInsert().Model(job).Exec(ctx)
 	}
 
 	return result, nil
 }
 
 func userHasPassword(user *domain.User) bool {
-	return user != nil && user.PasswordHash != nil && strings.TrimSpace(*user.PasswordHash) != ""
+	return user != nil && strings.TrimSpace(user.PasswordHash) != ""
 }
 
 func normalizeActivationChannel(channel string) string {
@@ -460,7 +467,7 @@ func normalizeActivationChannel(channel string) string {
 
 func (s *userService) ExportExcel(ctx context.Context, search, role, filter, status string) ([]byte, error) {
 	if s.audit != nil {
-		userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userIDMeta, userNameMeta, roleMeta, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		_ = s.audit.Log(ctx, s.db, userIDMeta, userNameMeta, roleMeta, "EXPORT_EXCEL", "users", 0, nil, map[string]interface{}{"search": search, "role": role, "filter": filter, "status": status}, ipAddress, userAgent)
 	}
 	users, _, _ := s.repo.FindPaginated(ctx, 1, 1000000, search, role, filter, status, "")
@@ -517,8 +524,10 @@ func (s *userService) ExportExcel(ctx context.Context, search, role, filter, sta
 			nik = "-"
 		}
 
-		birthDate := utils.FormatCustomDateID(u.BirthDate)
-		if u.BirthDate == nil || u.Role == "admin" || birthDate == "" {
+		var birthDate string
+		if u.BirthDate != nil && !u.BirthDate.IsZero() && u.Role != "admin" {
+			birthDate = u.BirthDate.Format("02/01/2006")
+		} else {
 			birthDate = "-"
 		}
 
@@ -567,110 +576,7 @@ func (s *userService) GetNotifications(ctx context.Context, userID uint) ([]noti
 	return s.notiRepo.GetByUserID(ctx, userID)
 }
 
-func (s *userService) notificationWorker() {
-	ctx := context.Background()
-	for job := range s.jobChan {
-		time.Sleep(3 * time.Second)
-
-		// Ambil data terbaru dengan relasi lengkap
-		fullUser, err := s.repo.FindByID(ctx, job.user.ID)
-		if err != nil || fullUser == nil {
-			fullUser = job.user
-		}
-
-		// LOG AUDIT - Agar kita bisa melihat apa yang sebenarnya dibaca database
-		fmt.Printf("[WORKER] Memproses: %s | Role: %s | IsActive: %v | Siswa: %d\n",
-			fullUser.Name, fullUser.Role, fullUser.IsActive, fullUser.StudentCount)
-
-		// 1. Cek Status Aktif (Wajib untuk semua role)
-		if !fullUser.IsActive {
-			fmt.Printf("[WORKER] Pengiriman dibatalkan: Akun %s berstatus Non-Aktif\n", fullUser.Name)
-			continue
-		}
-
-		// 2. Cek Kepemilikan Siswa (Hanya wajib untuk Role Parent/Wali)
-		if fullUser.Role == "parent" && fullUser.StudentCount == 0 {
-			fmt.Printf("[WORKER] Pengiriman dibatalkan: Wali Murid %s belum terhubung ke siswa manapun\n", fullUser.Name)
-			continue
-		}
-
-		token := utils.GenerateUUID()
-		expiry := time.Now().Add(24 * 7 * time.Hour)
-		_ = s.authRepo.SaveAuthToken(ctx, fullUser.ID, token, "activation", expiry)
-
-		link := fmt.Sprintf("%s/activate?token=%s", strings.TrimSuffix(job.cfg.FrontendURL, "/"), token)
-
-		childInfo := ""
-		if fullUser.StudentNames != nil && *fullUser.StudentNames != "" {
-			childInfo = fmt.Sprintf("Akun ini terhubung dengan putra/putri Anda:\n%s\n\n", formatActivationStudentList(*fullUser.StudentNames))
-		}
-
-		message := fmt.Sprintf(
-			"🌟 *AKSES AKUN SCHOOLPAY*\n\n"+
-				"Halo *%s*,\n\n"+
-				"%s"+
-				"Berikut adalah tautan aman untuk mengakses akun SchoolPay Anda. Silakan klik tautan di bawah ini untuk mengatur kata sandi Anda:\n\n"+
-				"🔗 %s\n\n"+
-				"Tautan ini berlaku selama 7 hari. Jika Anda mengalami kesulitan, silakan hubungi Admin Sekolah.\n\n"+
-				"Terima kasih,\n*Tim SchoolPay*",
-			fullUser.Name, childInfo, link,
-		)
-
-		if (job.channel == "email" || job.channel == "") && fullUser.Email != "" {
-			status := "sent"
-			var deliveryErr *string
-			if err := s.messenger.SendEmail(fullUser.Email, "Akses Akun SchoolPay", message); err != nil {
-				status = "failed"
-				deliveryErr = utils.StringPtr(err.Error())
-				fmt.Printf("[WORKER] Gagal mengirim Email ke %s: %v\n", fullUser.Email, err)
-			} else {
-				fmt.Printf("[WORKER] Berhasil mengirim Email ke %s\n", fullUser.Email)
-			}
-
-			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
-				UserID:         fullUser.ID,
-				Title:          "Akses Akun SchoolPay",
-				Message:        message,
-				Type:           "auth",
-				Channel:        "email",
-				DeliveryStatus: status,
-				DeliveryError:  deliveryErr,
-			})
-		}
-
-		if (job.channel == "whatsapp" || job.channel == "") && fullUser.PhoneNumber != "" {
-			status := "sent"
-			var deliveryErr *string
-			var whatsappID *string
-			if waID, err := s.messenger.SendWhatsApp(fullUser.PhoneNumber, message); err != nil {
-				status = "failed"
-				deliveryErr = utils.StringPtr(err.Error())
-				fmt.Printf("[WORKER] Gagal mengirim WA ke %s: %v\n", fullUser.PhoneNumber, err)
-			} else {
-				if waID != "" {
-					whatsappID = utils.StringPtr(waID)
-				}
-				fmt.Printf("[WORKER] Berhasil mengirim WA ke %s\n", fullUser.PhoneNumber)
-			}
-			if whatsappID == nil {
-				whatsappID = utils.StringPtr(fmt.Sprintf("local-wa-%d-%d", fullUser.ID, time.Now().UnixNano()))
-			}
-
-			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
-				UserID:         fullUser.ID,
-				Title:          "Akses Akun SchoolPay",
-				Message:        message,
-				Type:           "auth",
-				Channel:        "whatsapp",
-				WhatsappID:     whatsappID,
-				DeliveryStatus: status,
-				DeliveryError:  deliveryErr,
-			})
-		}
-	}
-}
-
-func formatActivationStudentList(raw string) string {
+func FormatActivationStudentList(raw string) string {
 	parts := strings.Split(raw, "||")
 	lines := make([]string, 0, len(parts))
 	for _, part := range parts {

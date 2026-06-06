@@ -18,7 +18,7 @@ func TestAuthService_Login_Success(t *testing.T) {
 	repoMock := mocks.NewAuthRepo(t)
 	auditMock := mocks.NewAuditLogService(t)
 
-	svc := usecase.NewAuthService(repoMock, nil, auditMock, nil)
+	svc := usecase.NewAuthService(repoMock, nil, auditMock)
 
 	ctx := context.Background()
 	password := "password123"
@@ -35,7 +35,7 @@ func TestAuthService_Login_Success(t *testing.T) {
 		Email:        req.Email,
 		Role:         "admin",
 		IsActive:     true,
-		PasswordHash: &hashedPassword,
+		PasswordHash: hashedPassword,
 	}
 
 	repoMock.On("FindByEmail", ctx, req.Email).Return(user, nil)
@@ -43,9 +43,9 @@ func TestAuthService_Login_Success(t *testing.T) {
 	repoMock.On("GetDB").Return(nil)
 
 	// Mock audit log
-	auditMock.On("Log", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	auditMock.On("LogMeta", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	resp, err := svc.Login(ctx, req, "secret_key")
+	resp, err := svc.Login(ctx, req, dto.AuditMeta{}, "secret_key")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -56,7 +56,7 @@ func TestAuthService_Login_Success(t *testing.T) {
 
 func TestAuthService_Login_InvalidEmail(t *testing.T) {
 	repoMock := mocks.NewAuthRepo(t)
-	svc := usecase.NewAuthService(repoMock, nil, nil, nil)
+	svc := usecase.NewAuthService(repoMock, nil, nil)
 
 	ctx := context.Background()
 	req := dto.LoginRequest{
@@ -66,7 +66,7 @@ func TestAuthService_Login_InvalidEmail(t *testing.T) {
 
 	repoMock.On("FindByEmail", ctx, req.Email).Return(nil, errors.New("not found"))
 
-	resp, err := svc.Login(ctx, req, "secret_key")
+	resp, err := svc.Login(ctx, req, dto.AuditMeta{}, "secret_key")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -75,7 +75,7 @@ func TestAuthService_Login_InvalidEmail(t *testing.T) {
 
 func TestAuthService_Login_InactiveUser(t *testing.T) {
 	repoMock := mocks.NewAuthRepo(t)
-	svc := usecase.NewAuthService(repoMock, nil, nil, nil)
+	svc := usecase.NewAuthService(repoMock, nil, nil)
 
 	ctx := context.Background()
 	req := dto.LoginRequest{
@@ -91,7 +91,7 @@ func TestAuthService_Login_InactiveUser(t *testing.T) {
 
 	repoMock.On("FindByEmail", ctx, req.Email).Return(user, nil)
 
-	resp, err := svc.Login(ctx, req, "secret_key")
+	resp, err := svc.Login(ctx, req, dto.AuditMeta{}, "secret_key")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)

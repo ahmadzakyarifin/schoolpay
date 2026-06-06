@@ -9,9 +9,11 @@ import (
 
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
+	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 	"github.com/uptrace/bun"
 )
@@ -33,49 +35,49 @@ func NewProfileHandler(db *bun.DB, userRepo repository.UserRepo, studentRepo aca
 }
 
 type updateOwnProfileRequest struct {
-	Name        string            `json:"name" binding:"required,min=2"`
-	Email       string            `json:"email" binding:"required,email"`
-	PhoneNumber string            `json:"phone_number" binding:"required,min=9,max=20"`
-	NIK         string            `json:"nik"`
-	BirthDate   *utils.CustomDate `json:"birth_date"`
-	Address     string            `json:"address"`
-	Education   string            `json:"education"`
-	Occupation  string            `json:"occupation"`
-	Income      string            `json:"income"`
+	Name        string `json:"name" binding:"required,min=2"`
+	Email       string `json:"email" binding:"required,email"`
+	PhoneNumber string `json:"phone_number" binding:"required,min=9,max=20"`
+	NIK         string `json:"nik"`
+	BirthDate   string `json:"birth_date" binding:"omitempty,custom_date"`
+	Address     string `json:"address"`
+	Education   string `json:"education"`
+	Occupation  string `json:"occupation"`
+	Income      string `json:"income"`
 }
 
 func (h *ProfileHandler) Me(c *gin.Context) {
 	userID, ok := c.Get("user_id")
 	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
+		helper.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
 		return
 	}
 
 	user, err := h.userRepo.FindByID(c.Request.Context(), userID.(uint))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusNotFound, err)
+		helper.ErrorResponseRaw(c, http.StatusNotFound, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", user)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", dto.ToUserResponse(*user))
 }
 
 func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	var req updateOwnProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 
 	userID, ok := c.Get("user_id")
 	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
+		helper.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
 		return
 	}
 
 	existing, err := h.userRepo.FindByID(c.Request.Context(), userID.(uint))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusNotFound, err)
+		helper.ErrorResponseRaw(c, http.StatusNotFound, err)
 		return
 	}
 
@@ -88,15 +90,13 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	updated.Education = nilIfBlank(req.Education)
 	updated.Occupation = nilIfBlank(req.Occupation)
 	updated.Income = nilIfBlank(req.Income)
-	if req.BirthDate != nil {
-		updated.BirthDate = req.BirthDate
+	if req.BirthDate != "" {
+		parsedDate, _ := time.Parse("02/01/2006", req.BirthDate)
+		updated.BirthDate = &parsedDate
 	}
 	updated.UpdatedAt = time.Now()
 
 	bizErrors := make(map[string][]string)
-	if !utils.IsValidEmail(updated.Email) {
-		bizErrors["email"] = append(bizErrors["email"], "Format email tidak valid.")
-	}
 	if !utils.ValidatePhoneNumber(updated.PhoneNumber) {
 		bizErrors["phone_number"] = append(bizErrors["phone_number"], "Nomor WhatsApp tidak valid.")
 	}
@@ -125,63 +125,63 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	if len(bizErrors) > 0 {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi bisnis gagal", bizErrors)
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi bisnis gagal", bizErrors)
 		return
 	}
 
 	if err := h.userRepo.Update(c.Request.Context(), h.db, &updated); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	if h.audit != nil {
-		auditUserID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		auditUserID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		_ = h.audit.Log(c.Request.Context(), h.db, auditUserID, userName, role, "UPDATE_OWN_PROFILE", "users", updated.ID, profileAuditValues(existing), profileAuditValues(&updated), ipAddress, userAgent)
 	}
 
 	user, _ := h.userRepo.FindByID(c.Request.Context(), updated.ID)
-	utils.SuccessResponse(c, http.StatusOK, "profil berhasil diperbarui", user)
+	helper.SuccessResponse(c, http.StatusOK, "profil berhasil diperbarui", dto.ToUserResponse(*user))
 }
 
 func (h *ProfileHandler) UploadPhoto(c *gin.Context) {
 	userID, ok := c.Get("user_id")
 	if !ok {
-		utils.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
+		helper.ErrorResponse(c, http.StatusUnauthorized, "session tidak valid")
 		return
 	}
 
 	existing, err := h.userRepo.FindByID(c.Request.Context(), userID.(uint))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusNotFound, err)
+		helper.ErrorResponseRaw(c, http.StatusNotFound, err)
 		return
 	}
 
 	file, err := c.FormFile("photo")
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "file foto tidak ditemukan")
+		helper.ErrorResponse(c, http.StatusBadRequest, "file foto tidak ditemukan")
 		return
 	}
 	if file.Size > 2*1024*1024 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ukuran foto maksimal 2MB")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ukuran foto maksimal 2MB")
 		return
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "format foto harus jpg, jpeg, png, atau webp")
+		helper.ErrorResponse(c, http.StatusBadRequest, "format foto harus jpg, jpeg, png, atau webp")
 		return
 	}
 
 	uploadDir := filepath.Join("public", "uploads", "users")
 	if err := utils.EnsureDir(uploadDir); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal menyiapkan folder upload")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "gagal menyiapkan folder upload")
 		return
 	}
 
 	filename := fmt.Sprintf("user-%d-%d%s", existing.ID, time.Now().UnixNano(), ext)
 	savePath := filepath.Join(uploadDir, filename)
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan foto")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan foto")
 		return
 	}
 
@@ -190,19 +190,19 @@ func (h *ProfileHandler) UploadPhoto(c *gin.Context) {
 	updated.ImagePath = &publicPath
 	updated.UpdatedAt = time.Now()
 	if err := h.userRepo.Update(c.Request.Context(), h.db, &updated); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	if h.audit != nil {
-		auditUserID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		auditUserID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		oldVals := map[string]interface{}{"image_path": existing.ImagePath}
 		newVals := map[string]interface{}{"image_path": updated.ImagePath}
 		_ = h.audit.Log(c.Request.Context(), h.db, auditUserID, userName, role, "UPDATE_OWN_PROFILE_PHOTO", "users", updated.ID, oldVals, newVals, ipAddress, userAgent)
 	}
 
 	user, _ := h.userRepo.FindByID(c.Request.Context(), updated.ID)
-	utils.SuccessResponse(c, http.StatusOK, "foto profil berhasil diperbarui", user)
+	helper.SuccessResponse(c, http.StatusOK, "foto profil berhasil diperbarui", dto.ToUserResponse(*user))
 }
 
 func nilIfBlank(value string) *string {
@@ -230,8 +230,8 @@ func profileAuditValues(user *domain.User) map[string]interface{} {
 		return nil
 	}
 	var birthDate interface{}
-	if user.BirthDate != nil && !user.BirthDate.Time().IsZero() {
-		birthDate = user.BirthDate.Time().Format("2006-01-02")
+	if user.BirthDate != nil && !user.BirthDate.IsZero() {
+		birthDate = user.BirthDate.Format("2006-01-02")
 	}
 	return map[string]interface{}{
 		"name":         user.Name,

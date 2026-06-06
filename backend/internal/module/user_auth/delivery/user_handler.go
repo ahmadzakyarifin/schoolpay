@@ -7,11 +7,80 @@ import (
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
+	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
+
+type userRequest struct {
+	Name        string `json:"name" binding:"required,min=2"`
+	Email       string `json:"email" binding:"required,email"`
+	PhoneNumber string `json:"phone_number" binding:"required,min=9,max=15"`
+	Role        string `json:"role" binding:"required,oneof=admin parent"`
+	NIK         string `json:"nik" binding:"omitempty,numeric,len=16"`
+	BirthDate   string `json:"birth_date" binding:"omitempty,custom_date"`
+	Address     string `json:"address" binding:"omitempty"`
+	Education   string `json:"education" binding:"omitempty"`
+	Occupation  string `json:"occupation" binding:"omitempty"`
+	Income      string `json:"income" binding:"omitempty"`
+	IsActive    *bool  `json:"is_active" binding:"omitempty"`
+}
+
+func (req *userRequest) ToDomain() domain.User {
+	var birthDate *time.Time
+	if req.BirthDate != "" {
+		if parsedDate, err := time.Parse("02/01/2006", req.BirthDate); err == nil {
+			birthDate = &parsedDate
+		}
+	}
+
+	var isActive bool = true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	}
+
+	var nik *string
+	if req.NIK != "" {
+		nik = &req.NIK
+	}
+
+	var address *string
+	if req.Address != "" {
+		address = &req.Address
+	}
+
+	var education *string
+	if req.Education != "" {
+		education = &req.Education
+	}
+
+	var occupation *string
+	if req.Occupation != "" {
+		occupation = &req.Occupation
+	}
+
+	var income *string
+	if req.Income != "" {
+		income = &req.Income
+	}
+
+	return domain.User{
+		Name:        req.Name,
+		Email:       req.Email,
+		PhoneNumber: req.PhoneNumber,
+		Role:        req.Role,
+		NIK:         nik,
+		BirthDate:   birthDate,
+		Address:     address,
+		Education:   education,
+		Occupation:  occupation,
+		Income:      income,
+		IsActive:    isActive,
+	}
+}
 
 type UserHandler struct {
 	s   usecase.UserService
@@ -33,12 +102,12 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 
 	users, total, err := h.s.GetPaginated(c.Request.Context(), page, limit, search, role, filter, status, sort)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data", gin.H{
-		"users": users,
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data", gin.H{
+		"users": dto.ToUserResponseList(users),
 		"total": total,
 		"page":  page,
 		"limit": limit,
@@ -49,21 +118,23 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	user, err := h.s.GetByID(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
+		helper.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data user", user)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data user", dto.ToUserResponse(*user))
 }
 
 func (h *UserHandler) Create(c *gin.Context) {
-	var user domain.User
+	var req userRequest
 	allErrors := make(map[string][]string)
 
-	if err := c.ShouldBindJSON(&user); err != nil {
-		allErrors = utils.GetValidationErrors(err)
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		allErrors = helper.GetValidationErrors(err)
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
 		return
 	}
+
+	user := req.ToDomain()
 
 	if err := h.s.Create(c.Request.Context(), &user, h.cfg); err != nil {
 		if bmErr, ok := err.(*utils.BusinessMultiError); ok {
@@ -75,7 +146,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 		} else {
 			// If it's a real system error (not validation), return 500
 			if len(allErrors) == 0 {
-				utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+				helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 				return
 			}
 		}
@@ -83,23 +154,24 @@ func (h *UserHandler) Create(c *gin.Context) {
 
 	//  Return All Errors if any
 	if len(allErrors) > 0 {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusCreated, "user berhasil dibuat, notifikasi dikirim", user)
+	helper.SuccessResponse(c, http.StatusCreated, "user berhasil dibuat, notifikasi dikirim", dto.ToUserResponse(user))
 }
 
 func (h *UserHandler) Update(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	var user domain.User
+	var req userRequest
 	allErrors := make(map[string][]string)
 
-	if err := c.ShouldBindJSON(&user); err != nil {
-		allErrors = utils.GetValidationErrors(err)
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		allErrors = helper.GetValidationErrors(err)
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
 		return
 	}
+	user := req.ToDomain()
 	user.ID = uint(id)
 
 	if err := h.s.Update(c.Request.Context(), &user, h.cfg); err != nil {
@@ -111,7 +183,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 			allErrors[bErr.Field] = append(allErrors[bErr.Field], bErr.Message)
 		} else {
 			if len(allErrors) == 0 {
-				utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+				helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 				return
 			}
 		}
@@ -119,11 +191,11 @@ func (h *UserHandler) Update(c *gin.Context) {
 
 	// Return All if any
 	if len(allErrors) > 0 {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", allErrors)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "user berhasil diperbarui", user)
+	helper.SuccessResponse(c, http.StatusOK, "user berhasil diperbarui", dto.ToUserResponse(user))
 }
 
 func (h *UserHandler) Delete(c *gin.Context) {
@@ -132,26 +204,26 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	// 1. Proteksi Diri Sendiri
 	currentUserID, _ := c.Get("user_id")
 	if uint(id) == currentUserID.(uint) {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Anda tidak diperbolehkan menghapus akun Anda sendiri")
+		helper.ErrorResponse(c, http.StatusBadRequest, "Anda tidak diperbolehkan menghapus akun Anda sendiri")
 		return
 	}
 
 	// 2. Sinkronisasi FE: Role Admin TIDAK BOLEH dihapus
 	user, err := h.s.GetByID(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
+		helper.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
 		return
 	}
 	if user.Role == "admin" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Akun dengan role Admin tidak dapat dihapus demi alasan keamanan data")
+		helper.ErrorResponse(c, http.StatusBadRequest, "Akun dengan role Admin tidak dapat dihapus demi alasan keamanan data")
 		return
 	}
 
 	if err := h.s.Delete(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "user berhasil dihapus", nil)
+	helper.SuccessResponse(c, http.StatusOK, "user berhasil dihapus", nil)
 }
 
 func (h *UserHandler) ToggleStatus(c *gin.Context) {
@@ -160,14 +232,14 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 	// 1. Cek Apakah User Eksis
 	user, err := h.s.GetByID(c.Request.Context(), uint(id))
 	if err != nil || user == nil {
-		utils.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
+		helper.ErrorResponse(c, http.StatusNotFound, "user tidak ditemukan")
 		return
 	}
 
 	// 2. Proteksi Diri Sendiri
 	currentUserID, _ := c.Get("user_id")
 	if uint(id) == currentUserID.(uint) {
-		utils.ErrorResponse(c, http.StatusBadRequest, "Anda tidak diperbolehkan menonaktifkan akun Anda sendiri")
+		helper.ErrorResponse(c, http.StatusBadRequest, "Anda tidak diperbolehkan menonaktifkan akun Anda sendiri")
 		return
 	}
 
@@ -182,16 +254,16 @@ func (h *UserHandler) ToggleStatus(c *gin.Context) {
 			}
 		}
 		if activeAdmins <= 1 {
-			utils.ErrorResponse(c, http.StatusBadRequest, "Gagal: Ini adalah satu-satunya akun Admin yang aktif di sistem")
+			helper.ErrorResponse(c, http.StatusBadRequest, "Gagal: Ini adalah satu-satunya akun Admin yang aktif di sistem")
 			return
 		}
 	}
 
 	if err := h.s.ToggleStatus(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "status user berhasil diubah", nil)
+	helper.SuccessResponse(c, http.StatusOK, "status user berhasil diubah", nil)
 }
 
 func (h *UserHandler) Activate(c *gin.Context) {
@@ -201,21 +273,21 @@ func (h *UserHandler) Activate(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 
 	ctx := c.Request.Context()
 	user, err := h.s.ActivateAccount(ctx, req.Token, req.Password)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
 
 	accessToken, _ := utils.GenerateAccessToken(user.ID, user.Email, user.Role, h.cfg.JWTSecret)
-	refreshToken, expiry, _ := utils.GenerateRefreshToken(user.ID, user.Email, user.Role, h.cfg.JWTSecret)
+	refreshToken, expiry, _ := utils.GenerateRefreshToken()
 	if err := h.s.SaveRefreshToken(ctx, user.ID, refreshToken, expiry); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan session")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan session")
 		return
 	}
 
@@ -223,7 +295,7 @@ func (h *UserHandler) Activate(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("refresh_token", refreshToken, int(time.Until(expiry).Seconds()), "/", "", false, true)
 
-	utils.SuccessResponse(c, http.StatusOK, "akun berhasil diaktifkan", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "akun berhasil diaktifkan", gin.H{
 		"access_token": accessToken,
 		"user": gin.H{
 			"id":    user.ID,
@@ -247,10 +319,10 @@ func (h *UserHandler) ResendNotification(c *gin.Context) {
 	}
 
 	if err := h.s.ResendNotification(c.Request.Context(), uint(id), req.Channel, h.cfg); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "link aktivasi berhasil dikirim ulang", nil)
+	helper.SuccessResponse(c, http.StatusOK, "link aktivasi berhasil dikirim ulang", nil)
 }
 
 func (h *UserHandler) BulkResendNotification(c *gin.Context) {
@@ -260,17 +332,17 @@ func (h *UserHandler) BulkResendNotification(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 
 	result, err := h.s.BulkResendNotification(c.Request.Context(), req.IDs, req.Channel, h.cfg)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d link aktivasi diproses", result.Sent), result)
+	helper.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d link aktivasi diproses", result.Sent), result)
 }
 
 func (h *UserHandler) BulkDelete(c *gin.Context) {
@@ -278,7 +350,7 @@ func (h *UserHandler) BulkDelete(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 
@@ -286,33 +358,33 @@ func (h *UserHandler) BulkDelete(c *gin.Context) {
 	for _, id := range req.IDs {
 		// 1. Proteksi Diri Sendiri
 		if id == currentUserID.(uint) {
-			utils.ErrorResponse(c, http.StatusBadRequest, "Operasi dibatalkan: Terdapat akun Anda sendiri dalam daftar hapus")
+			helper.ErrorResponse(c, http.StatusBadRequest, "Operasi dibatalkan: Terdapat akun Anda sendiri dalam daftar hapus")
 			return
 		}
 
 		// 2. Proteksi Role Admin (Sinkronisasi FE)
 		user, err := h.s.GetByID(c.Request.Context(), id)
 		if err == nil && user.Role == "admin" {
-			utils.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Operasi dibatalkan: Akun %s adalah Admin dan tidak boleh dihapus", user.Name))
+			helper.ErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Operasi dibatalkan: Akun %s adalah Admin dan tidak boleh dihapus", user.Name))
 			return
 		}
 	}
 
 	if err := h.s.BulkDelete(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d pengguna berhasil dihapus", len(req.IDs)), nil)
+	helper.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d pengguna berhasil dihapus", len(req.IDs)), nil)
 }
 
 func (h *UserHandler) Restore(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.Restore(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "akun berhasil dipulihkan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "akun berhasil dipulihkan", nil)
 }
 
 func (h *UserHandler) BulkRestore(c *gin.Context) {
@@ -320,26 +392,26 @@ func (h *UserHandler) BulkRestore(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 
 	if err := h.s.BulkRestore(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d pengguna berhasil dipulihkan", len(req.IDs)), nil)
+	helper.SuccessResponse(c, http.StatusOK, fmt.Sprintf("%d pengguna berhasil dipulihkan", len(req.IDs)), nil)
 }
 
 func (h *UserHandler) GetNotifications(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	ns, err := h.s.GetNotifications(c.Request.Context(), userID.(uint))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", ns)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", ns)
 }
 
 func (h *UserHandler) Export(c *gin.Context) {
@@ -350,7 +422,7 @@ func (h *UserHandler) Export(c *gin.Context) {
 
 	data, err := h.s.ExportExcel(c.Request.Context(), search, role, filter, status)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -363,10 +435,10 @@ func (h *UserHandler) GetDependencyInfo(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	info, err := h.s.GetDependencyInfo(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", info)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", info)
 }
 
 func (h *UserHandler) CheckUnique(c *gin.Context) {
@@ -377,11 +449,11 @@ func (h *UserHandler) CheckUnique(c *gin.Context) {
 
 	isUnique, err := h.s.CheckUnique(c.Request.Context(), field, value, uint(excludeID))
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		helper.ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{
 		"is_unique": isUnique,
 	})
 }

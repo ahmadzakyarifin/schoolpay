@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type JWTClaims struct {
@@ -29,21 +30,10 @@ func GenerateAccessToken(userID uint, email string, role string, secret string) 
 	return token.SignedString([]byte(secret))
 }
 
-func GenerateRefreshToken(userID uint, email string, role string, secret string) (string, time.Time, error) {
+func GenerateRefreshToken() (string, time.Time, error) {
 	expiry := time.Now().Add(7 * 24 * time.Hour)
-	claims := &JWTClaims{
-		UserID: userID,
-		Email:  email,
-		Role:   role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expiry),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	t, err := token.SignedString([]byte(secret))
-	return t, expiry, err
+	token := uuid.New().String()
+	return token, expiry, nil
 }
 
 func ValidateToken(tokenString string, secret string) (*JWTClaims, error) {

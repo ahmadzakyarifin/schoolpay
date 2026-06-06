@@ -8,6 +8,7 @@ import (
 	bun "github.com/uptrace/bun"
 
 	domain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
+	repository "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	mock "github.com/stretchr/testify/mock"
 
 	time "time"
@@ -189,38 +190,58 @@ func (_m *AuthRepo) FindUserByID(ctx context.Context, id uint) (*domain.User, er
 }
 
 // GetDB provides a mock function with no fields
-func (_m *AuthRepo) GetDB() *bun.DB {
+func (_m *AuthRepo) GetDB() bun.IDB {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetDB")
 	}
 
-	var r0 *bun.DB
-	if rf, ok := ret.Get(0).(func() *bun.DB); ok {
+	var r0 bun.IDB
+	if rf, ok := ret.Get(0).(func() bun.IDB); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*bun.DB)
+			r0 = ret.Get(0).(bun.IDB)
 		}
 	}
 
 	return r0
 }
 
-// MarkTokenAsUsed provides a mock function with given fields: ctx, token, tokenType
-func (_m *AuthRepo) MarkTokenAsUsed(ctx context.Context, token string, tokenType string) error {
-	ret := _m.Called(ctx, token, tokenType)
+// RotateRefreshToken provides a mock function with given fields: ctx, token
+func (_m *AuthRepo) RotateRefreshToken(ctx context.Context, token string) error {
+	ret := _m.Called(ctx, token)
 
 	if len(ret) == 0 {
-		panic("no return value specified for MarkTokenAsUsed")
+		panic("no return value specified for RotateRefreshToken")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, token, tokenType)
+	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = rf(ctx, token)
 	} else {
 		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// WithTx provides a mock function with given fields: tx
+func (_m *AuthRepo) WithTx(tx bun.Tx) repository.AuthRepo {
+	ret := _m.Called(tx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WithTx")
+	}
+
+	var r0 repository.AuthRepo
+	if rf, ok := ret.Get(0).(func(bun.Tx) repository.AuthRepo); ok {
+		r0 = rf(tx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repository.AuthRepo)
+		}
 	}
 
 	return r0
