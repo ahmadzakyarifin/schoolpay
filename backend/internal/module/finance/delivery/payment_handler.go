@@ -7,7 +7,7 @@ import (
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,15 +36,15 @@ func (h *PaymentHandler) Process(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	if req.Amount <= 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "nominal pembayaran harus lebih dari 0")
+		helper.ErrorResponse(c, http.StatusBadRequest, "nominal pembayaran harus lebih dari 0")
 		return
 	}
 	if req.IsBypassRule && req.BypassReason == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "alasan bypass wajib diisi")
+		helper.ErrorResponse(c, http.StatusBadRequest, "alasan bypass wajib diisi")
 		return
 	}
 
@@ -68,10 +68,10 @@ func (h *PaymentHandler) Process(c *gin.Context) {
 	}
 
 	if err := h.s.Process(c.Request.Context(), req.StudentID, p, req.BillIDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "pembayaran berhasil diproses", p)
+	helper.SuccessResponse(c, http.StatusOK, "pembayaran berhasil diproses", p)
 }
 
 func (h *PaymentHandler) CreateIntent(c *gin.Context) {
@@ -84,62 +84,62 @@ func (h *PaymentHandler) CreateIntent(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	if req.Amount <= 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "nominal pembayaran harus lebih dari 0")
+		helper.ErrorResponse(c, http.StatusBadRequest, "nominal pembayaran harus lebih dari 0")
 		return
 	}
 
 	p, err := h.s.CreateIntent(c.Request.Context(), req.StudentID, req.Amount, req.DepositApplied, req.BillIDs, req.IsBypassRule)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "intent created", p)
+	helper.SuccessResponse(c, http.StatusOK, "intent created", p)
 }
 
 func (h *PaymentHandler) GetReceipt(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil || id <= 0 {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 	receipt, err := h.s.GetReceipt(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusNotFound, err)
+		helper.ErrorResponseRaw(c, http.StatusNotFound, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", receipt)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", receipt)
 }
 
 func (h *PaymentHandler) GetHistory(c *gin.Context) {
 	studentIDStr := c.Query("student_id")
 	if studentIDStr == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "student_id diperlukan")
+		helper.ErrorResponse(c, http.StatusBadRequest, "student_id diperlukan")
 		return
 	}
 
 	id, _ := strconv.Atoi(studentIDStr)
 	list, err := h.s.GetHistory(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", list)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", list)
 }
 
 func (h *PaymentHandler) HandleWebhook(c *gin.Context) {
 	var payload map[string]interface{}
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "invalid payload")
+		helper.ErrorResponse(c, http.StatusBadRequest, "invalid payload")
 		return
 	}
 
 	if err := h.s.HandleWebhook(c.Request.Context(), payload); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 

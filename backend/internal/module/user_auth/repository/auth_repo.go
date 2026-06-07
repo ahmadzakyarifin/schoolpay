@@ -18,7 +18,7 @@ type AuthRepo interface {
 
 	// Refresh Tokens
 	SaveRefreshToken(ctx context.Context, userID uint, token string, expiresAt time.Time) error
-	FindRefreshToken(ctx context.Context, token string) (uint, error)
+	FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error)
 	DeleteRefreshToken(ctx context.Context, token string) error
 	DeleteAllUserRefreshTokens(ctx context.Context, userID uint) error
 
@@ -110,16 +110,17 @@ func (r *authRepo) SaveRefreshToken(ctx context.Context, userID uint, token stri
 	return err
 }
 
-func (r *authRepo) FindRefreshToken(ctx context.Context, token string) (uint, error) {
+func (r *authRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error) {
 	hashedToken := hashToken(token)
-	var rt RefreshTokenModel
-	err := r.db.NewSelect().Model(&rt).
-		Where("token = ? AND expires_at > ?", hashedToken, time.Now()).
+	var u model.UserModel
+	err := r.db.NewSelect().Model(&u).
+		Join("JOIN refresh_tokens AS rt ON rt.user_id = user_model.id").
+		Where("rt.token = ? AND rt.expires_at > ?", hashedToken, time.Now()).
 		Scan(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return rt.UserID, nil
+	return u.ToDomain(), nil
 }
 
 func (r *authRepo) DeleteRefreshToken(ctx context.Context, token string) error {

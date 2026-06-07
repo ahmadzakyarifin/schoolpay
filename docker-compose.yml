@@ -1,100 +1,169 @@
 services:
+  # DATABASE SERVICE (MariaDB)
   db:
+    # Menggunakan image resmi MariaDB versi terbaru dari Docker Hub
     image: mariadb:latest
+    
+    # Memberikan nama spesifik pada container agar mudah diidentifikasi saat running
     container_name: schoolpay
-    restart: always
+    
+    # Kebijakan restart: Container otomatis menyala kembali jika crash, kecuali dihentikan manual
+    restart: unless-stopped
+    
+    # Batas waktu toleransi untuk mematikan database secara aman (graceful shutdown)
+    stop_grace_period: 60s
+    
+    # Menjalankan command tambahan untuk mengatur zona waktu default MariaDB ke WIB (+07:00)
+    command: ["--default-time-zone=+07:00"]
+    
+    # Mengatur environment variable di dalam container database
     environment:
+      # Password root diambil dari file .env (variabel DB_PASS)
       MYSQL_ROOT_PASSWORD: ${DB_PASS}
+      # Nama database default yang otomatis dibuat saat inisialisasi awal
       MYSQL_DATABASE: ${DB_NAME}
+      # Zona waktu sistem operasi di dalam container
       TZ: Asia/Jakarta
+      
+    # Pemetaan port: menghubungkan port di mesin host (kiri) ke port di dalam container (kanan)
     ports:
       - "${DB_PORT}:3306"
+      
+    # Menyimpan data database secara permanen pada volume agar data tidak hilang saat container dihapus
     volumes:
       - mariadb_data:/var/lib/mysql
+      
+    # Fitur pemantauan kesehatan container (healthcheck)
     healthcheck:
+      # Command untuk memastikan mesin database sudah siap menerima koneksi dan selesai inisialisasi
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      # Durasi jeda antar pengecekan kesehatan
       interval: 5s
+      # Batas waktu tunggu respons pengecekan kesehatan
       timeout: 5s
+      # Jumlah toleransi kegagalan pengecekan sebelum container dianggap tidak sehat (unhealthy)
       retries: 5
 
-  redis:
-    image: redis:alpine
-    container_name: schoolpay_redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
 
+  #  MIGRATION SERVICE (Goose)
   migrate:
+    # Menggunakan image Goose untuk menangani migrasi database schema Go
     image: gomicro/goose
+    
+    # Nama container untuk proses migrasi database
     container_name: schoolpay_migrate
+    
+    # Mengatur zona waktu di dalam container migrasi
     environment:
       TZ: Asia/Jakarta
+      
+    # Memetakan folder migrasi di komputer lokal ke dalam folder /migrations di dalam container
     volumes:
       - ./backend/database/migrations:/migrations
+      
+    # Perintah shell yang dijalankan saat container menyala
     command:
       - /bin/sh
       - -c
       - |
+        # Melakukan looping pengecekan status database db:3306 sebelum menjalankan migrasi
         until goose -dir /migrations mysql "${DB_USER}:${DB_PASS}@tcp(db:3306)/${DB_NAME}?parseTime=true" status; do
           echo "Waiting for database to be ready..."
           sleep 2
         done
+        # Menjalankan seluruh file migrasi (Up) ke database
         goose -dir /migrations mysql "${DB_USER}:${DB_PASS}@tcp(db:3306)/${DB_NAME}?parseTime=true" up
+        
+    # Ketergantungan layanan: migrasi hanya akan berjalan jika database 'db' sudah berstatus 'healthy'
     depends_on:
       db:
         condition: service_healthy
 
+
+  # WHATSAPP GATEWAY SERVICE (WAHA - WhatsApp HTTP API)
   waha:
+    # Menggunakan image WAHA (WhatsApp HTTP API) versi terbaru
     image: devlikeapro/waha:latest
+    
+    # Nama container layanan gateway WhatsApp
     container_name: waha-schoolpay
-    restart: always
+    
+    # Otomatis restart jika terjadi error/crash
+    restart: unless-stopped
+    
+    # Batas waktu maksimal mematikan WAHA dengan aman sebelum dipaksa mati
+    stop_grace_period: 60s
+    
+    # Memetakan port 3050 pada komputer lokal agar bisa diakses lewat http://localhost:3050
     ports:
       - "3050:3000"
+      
+    # Menyimpan sesi WhatsApp secara lokal agar tidak perlu scan QR Code berulang kali
     volumes:
       - ./waha_sessions:/app/.sessions
+      
+    # Mengatur konfigurasi WAHA menggunakan environment variables
     environment:
       - TZ=Asia/Jakarta
-      - WHATSAPP_API_KEY=${WAHA_API_KEY}
+      # API Key keamanan dari file .env untuk mengakses endpoint WAHA
       - WAHA_API_KEY=${WAHA_API_KEY}
-      - WHATSAPP_HOOK_URL=http://schoolpay_be:8080/wa-webhook
-      - WHATSAPP_HOOK_EVENTS=session.status,message,message.ack
-      - WHATSAPP_HOOK_CUSTOM_HEADERS=X-SchoolPay-Webhook-Secret:${WAHA_WEBHOOK_SECRET}
+      # Mengecualikan proteksi API Key untuk path health check dan ping
+      - WAHA_API_KEY_EXCLUDE_PATH=health,ping
+      # Menggunakan engine NOWEB (tidak memerlukan browser Chromium penuh, lebih hemat RAM)
       - WHATSAPP_DEFAULT_ENGINE=NOWEB
+      # Menampilkan QR Code login WhatsApp di log container docker
       - WAHA_PRINT_QR=true
-      - WAHA_ZIP_LOGS=true
+      # Username & Password untuk mengakses halaman dashboard visual WAHA
       - WAHA_DASHBOARD_USERNAME=${WAHA_DASHBOARD_USERNAME}
       - WAHA_DASHBOARD_PASSWORD=${WAHA_DASHBOARD_PASSWORD}
-      - WHATSAPP_SWAGGER_USERNAME=${WHATSAPP_SWAGGER_USERNAME}
-      - WHATSAPP_SWAGGER_PASSWORD=${WHATSAPP_SWAGGER_PASSWORD}
+      
+    # Memastikan layanan WAHA berjalan normal dengan memanggil endpoint /ping
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # Memberikan kelonggaran waktu 10 detik di awal booting sebelum healthcheck dinilai
+      start_period: 10s
 
 
+  # BACKEND APPLICATION SERVICE (Go Application)
   app:
+    # Membangun image secara dinamis berdasarkan Dockerfile di folder ./backend
     build:
       context: ./backend
       dockerfile: Dockerfile
-      network: host
-    container_name: schoolpay_be
-    restart: always
+      
+    # Nama container untuk aplikasi Backend
+    container_name: schoolpay-be
+    
+    # Otomatis menyala kembali jika crash
+    restart: unless-stopped
+    
+    # Waktu tunggu shutdown aplikasi secara aman (30 detik)
+    stop_grace_period: 30s
+    
+    # Memetakan folder lokal untuk file upload media/dokumen
     volumes:
-      - ./backend/database/migrations:/app/migrations
       - ./backend/public/uploads:/app/public/uploads
+      
+    # Pemetaan port aplikasi web backend
     ports:
       - "${PORT}:${PORT}"
+      
+    # Syarat mutlak jalannya aplikasi:
+    # 1. Database ('db') harus dalam kondisi sehat (healthy)
+    # 2. Proses migrasi database ('migrate') sudah selesai dengan sukses (completed)
+    # 3. Layanan WhatsApp ('waha') sudah aktif dan sehat (healthy)
     depends_on:
       db:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
       waha:
-        condition: service_started
-      redis:
-        condition: service_started
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+        condition: service_healthy
+        
+    # Mengirim seluruh variabel lingkungan dari file .env ke dalam aplikasi Go
     environment:
       - TZ=Asia/Jakarta
       - DB_USER=${DB_USER}
@@ -109,30 +178,19 @@ services:
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_EMAIL=${SMTP_EMAIL}
       - SMTP_PASS=${SMTP_PASS}
+      # URL internal docker untuk menghubungi API WAHA
       - WAHA_URL=http://waha:3000
       - WAHA_API_KEY=${WAHA_API_KEY}
-      - WHATSAPP_HOOK_URL=http://schoolpay_be:8080/wa-webhook
+      # Webhook URL internal docker agar WAHA bisa mengirim event WhatsApp masuk ke backend
+      - WHATSAPP_HOOK_URL=http://app:8080/wa-webhook
+      - WHATSAPP_HOOK_EVENTS=${WHATSAPP_HOOK_EVENTS:-session.status,message,message.ack}
       - WAHA_WEBHOOK_SECRET=${WAHA_WEBHOOK_SECRET}
       - FRONTEND_URL=${FRONTEND_URL}
       - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
       - MIDTRANS_IS_SANDBOX=${MIDTRANS_IS_SANDBOX}
-      - REDIS_ADDR=redis:6379
 
-  scheduler:
-    image: mcuadros/ofelia:latest
-    container_name: schoolpay_scheduler
-    environment:
-      - TZ=Asia/Jakarta
-    depends_on:
-      - waha
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    command: daemon --docker
-    labels:
-      ofelia.job-local.restart-waha.schedule: "@weekly"
-      ofelia.job-local.restart-waha.command: "docker restart waha-schoolpay"
-
+# VOLUMES DECLARATION
+# Mendeklarasikan volume bernama 'mariadb_data' yang akan dikelola oleh Docker Engine
 volumes:
   mariadb_data:
-  redis_data:

@@ -357,7 +357,13 @@ func (s *whatsappService) RegisterWebhook() error {
 		fmt.Printf("[WA-DEBUG] Registering Webhook to %s (attempt %d/5)...\n", webhookCfg.URL, i+1)
 
 		status, _, err := doWAHAJSON(client, http.MethodPost, fmt.Sprintf("%s/api/webhooks", wahaURL), apiKey, webhookPayload)
-		if err == nil || status == http.StatusConflict {
+		if err != nil {
+			fmt.Printf("[WA-DEBUG] Registration failed: %v, retrying...\n", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		if status == http.StatusOK || status == http.StatusCreated || status == http.StatusConflict {
 			fmt.Println("[WA-DEBUG] Webhook Registered Successfully!")
 			return nil
 		}
@@ -367,12 +373,6 @@ func (s *whatsappService) RegisterWebhook() error {
 				fmt.Println("[WA-DEBUG] Webhook stored in default session configuration.")
 				return nil
 			}
-		}
-
-		if err != nil {
-			fmt.Printf("[WA-DEBUG] Registration failed: %v, retrying...\n", err)
-			time.Sleep(5 * time.Second)
-			continue
 		}
 		time.Sleep(5 * time.Second)
 	}

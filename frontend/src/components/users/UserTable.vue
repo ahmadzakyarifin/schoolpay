@@ -86,42 +86,42 @@ const isAllSelected = () => {
   <div class="flex-1 overflow-x-auto custom-scrollbar">
     <table class="w-full text-left border-collapse">
       <thead>
-        <tr class="bg-slate-50/50 border-b border-slate-100">
-          <th class="w-[50px] px-4 py-4">
-            <div @click="emit('toggle-select-all')" class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all"
+        <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <th class="w-12 py-3 px-4 text-center">
+            <div @click="emit('toggle-select-all')" class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
               :class="isAllSelected() ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'">
               <CheckIcon v-if="isAllSelected()" class="w-2.5 h-2.5 text-white" />
             </div>
           </th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Pengguna</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Email</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">WhatsApp</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Role</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Tanggal Dibuat</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Status</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Siswa</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right px-10">Aksi</th>
+          <th class="py-3 px-4">Pengguna</th>
+          <th class="py-3 px-4">Email</th>
+          <th class="py-3 px-4">WhatsApp</th>
+          <th class="py-3 px-4">Role</th>
+          <th class="py-3 px-4">Tanggal Dibuat</th>
+          <th class="py-3 px-4">Status</th>
+          <th class="py-3 px-4">Siswa</th>
+          <th class="py-3 px-4 text-center w-[250px]">Aksi</th>
         </tr>
       </thead>
       <tbody :class="{'opacity-50 pointer-events-none': loading}">
-        <tr v-for="user in users" :key="user.id" class="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0"
+        <tr v-for="user in users" :key="user.id" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600"
           :class="{'bg-indigo-50/30': selectedUserIds.includes(user.id)}">
-          <td class="px-4 py-4">
+          <td class="py-3 px-4 text-center">
             <div v-if="user.id !== authStore.user?.id" @click="emit('toggle-select-user', user.id)" 
-              class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all"
-              :class="selectedUserIds.includes(user.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 group-hover:border-indigo-300'">
+              class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
+              :class="selectedUserIds.includes(user.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-300'">
               <CheckIcon v-if="selectedUserIds.includes(user.id)" class="w-2.5 h-2.5 text-white" />
             </div>
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
               <div class="flex items-center gap-3 cursor-pointer" @click="emit('go-to-details', user)">
                 <div class="w-8 h-8 rounded-lg flex items-center justify-center transition-all shadow-sm shrink-0"
-                  :class="user.role === 'admin' ? 'bg-indigo-50/50 text-indigo-500 border border-indigo-100/50 group-hover:bg-indigo-50 group-hover:text-indigo-600' : 'bg-slate-100/70 text-slate-500 border border-slate-200/60 group-hover:bg-slate-200/50 group-hover:text-indigo-600'">
+                  :class="user.role === 'admin' ? 'bg-indigo-50/50 text-indigo-500 border border-indigo-100/50' : 'bg-slate-100/70 text-slate-500 border border-slate-200/60'">
                   <AdminIcon v-if="user.role === 'admin'" class="w-4 h-4" />
                   <ParentIcon v-else class="w-4 h-4" />
                 </div>
                 <div>
-                  <div class="font-bold text-slate-500 text-xs uppercase tracking-wider truncate flex items-center gap-2 group-hover:text-indigo-600 transition-colors">
+                  <div class="font-black text-slate-800 text-xs uppercase tracking-wider truncate flex items-center gap-2 max-w-[150px]">
                     {{ user.name }}
                     <span v-if="user.role === 'parent' && !user.student_count" class="text-[9px] font-normal text-slate-400 italic lowercase tracking-normal" title="Belum terhubung ke Siswa">(tanpa anak)</span>
                   </div>
@@ -129,23 +129,26 @@ const isAllSelected = () => {
                 </div>
               </div>
           </td>
-          <td class="px-4 py-4">
-            <div class="flex items-center gap-2 text-xs font-medium text-slate-600">
+          <td class="py-3 px-4">
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-600">
               <span class="truncate max-w-[120px]">{{ user.email || '-' }}</span>
             </div>
           </td>
-          <td class="px-4 py-4">
-            <div class="flex items-center gap-2 text-xs font-medium text-slate-600">
-              <span class="truncate">+{{ user.phone_number || '-' }}</span>
-            </div>
+          <td class="py-3 px-4">
+            <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono font-bold">{{ user.phone_number ? '+' + user.phone_number : '-' }}</span>
           </td>
-          <td class="px-4 py-4 text-xs font-medium text-slate-600 capitalize">
-            {{ user.role === 'admin' ? 'Admin' : 'Wali' }}
+          <td class="py-3 px-4 text-xs font-bold text-slate-600 capitalize">
+            <span :class="[
+              'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider',
+              user.role === 'admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200/50' : 'bg-amber-50 text-amber-700 border border-amber-200/50'
+            ]">
+              {{ user.role === 'admin' ? 'Admin' : 'Wali' }}
+            </span>
           </td>
-          <td class="px-4 py-4 text-xs font-medium text-slate-600">
+          <td class="py-3 px-4 text-slate-500 text-[11px]">
             {{ formatDate ? formatDate(user.created_at) : new Date(user.created_at).toLocaleDateString() }}
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div class="flex items-center">
               <button 
                 v-if="status !== 'trash'"
@@ -163,7 +166,7 @@ const isAllSelected = () => {
               <span v-else class="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Dihapus</span>
             </div>
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div v-if="user.role === 'parent'" class="flex items-center gap-1.5 relative">
               <button 
                 @click.stop="toggleStudentList(user.id)"
@@ -206,17 +209,17 @@ const isAllSelected = () => {
             </div>
             <span v-else class="text-[10px] text-slate-300 font-medium italic">N/A</span>
           </td>
-          <td class="px-4 py-4 text-right">
-            <div class="flex items-center justify-end gap-1 px-4">
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center gap-1.5 flex-nowrap">
               <template v-if="status !== 'trash'">
                 <div v-if="canResendActivation(user)" class="relative">
                   <button
                     @click.stop="toggleResendMenu(user.id)"
-                    class="p-2 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all flex items-center gap-0.5"
+                    class="p-2 bg-white text-indigo-600 border border-slate-200 hover:bg-indigo-50 rounded-lg flex items-center justify-center gap-0.5 transition-all shadow-sm"
                     title="Kirim ulang aktivasi"
                   >
-                    <SendIcon class="w-4 h-4" />
-                    <ChevronDownIcon class="w-2.5 h-2.5" />
+                    <SendIcon class="w-3.5 h-3.5 text-indigo-500" />
+                    <ChevronDownIcon class="w-2 h-2 text-indigo-400" />
                   </button>
 
                   <transition name="fade-scale">
@@ -254,21 +257,21 @@ const isAllSelected = () => {
                     </div>
                   </transition>
                 </div>
-                <button @click="emit('edit', user)" class="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all" title="Ubah">
-                  <EditIcon class="w-4 h-4" />
+                <button @click="emit('edit', user)" title="Ubah" class="p-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <EditIcon class="w-3.5 h-3.5 text-slate-500" />
                 </button>
                 <button 
                   v-if="user.id !== authStore.user?.id" 
                   @click="emit('delete', user)" 
-                  class="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all" 
                   title="Hapus"
+                  class="p-2 bg-white text-rose-600 border border-slate-200 hover:bg-rose-50 rounded-lg flex items-center justify-center transition-all shadow-sm"
                 >
-                  <TrashIcon class="w-4 h-4" />
+                  <TrashIcon class="w-3.5 h-3.5 text-rose-500" />
                 </button>
               </template>
               <template v-else>
-                <button @click="emit('restore', user)" class="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all" title="Pulihkan">
-                  <ResetIcon class="w-4 h-4" />
+                <button @click="emit('restore', user)" title="Pulihkan" class="p-2 bg-white text-emerald-600 border border-slate-200 hover:bg-emerald-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <ResetIcon class="w-3.5 h-3.5 text-emerald-600" />
                 </button>
               </template>
             </div>

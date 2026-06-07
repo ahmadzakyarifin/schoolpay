@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,13 +19,13 @@ func NewUploadHandler() *UploadHandler {
 func (h *UploadHandler) UploadStudentPhoto(c *gin.Context) {
 	file, err := c.FormFile("photo")
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "file foto tidak ditemukan")
+		helper.ErrorResponse(c, http.StatusBadRequest, "file foto tidak ditemukan")
 		return
 	}
 
 	ext := filepath.Ext(file.Filename)
 	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "format file harus jpg, jpeg, atau png")
+		helper.ErrorResponse(c, http.StatusBadRequest, "format file harus jpg, jpeg, atau png")
 		return
 	}
 
@@ -33,11 +33,11 @@ func (h *UploadHandler) UploadStudentPhoto(c *gin.Context) {
 	savePath := filepath.Join("public/uploads/students", filename)
 
 	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan file")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "gagal menyimpan file")
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "foto berhasil diupload", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "foto berhasil diupload", gin.H{
 		"path": "/uploads/students/" + filename,
 	})
 }

@@ -110,14 +110,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, audit dto
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
-	storedUserID, err := s.r.FindRefreshToken(ctx, refreshToken)
+	user, err := s.r.FindUserByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, errors.New("session tidak valid atau sudah kadaluarsa")
-	}
-
-	user, err := s.r.FindUserByID(ctx, storedUserID)
-	if err != nil {
-		return nil, errors.New("user tidak ditemukan")
 	}
 
 	if !user.IsActive {
@@ -277,10 +272,6 @@ func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPassword
 }
 
 func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRequest, audit dto.AuditMeta) error {
-	if req.Password != req.ConfirmPassword {
-		return errors.New("password dan konfirmasi password tidak cocok")
-	}
-
 	userID, err := s.r.FindAuthToken(ctx, req.Token, "reset_password")
 	if err != nil {
 		if s.audit != nil {
@@ -326,10 +317,6 @@ func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRe
 }
 
 func (s *authService) ChangePassword(ctx context.Context, userID uint, req dto.ChangePasswordRequest, audit dto.AuditMeta) error {
-	if req.Password != req.ConfirmPassword {
-		return errors.New("password dan konfirmasi password tidak cocok")
-	}
-
 	user, err := s.r.FindUserByID(ctx, userID)
 	if err != nil || user == nil {
 		return errors.New("user tidak ditemukan")

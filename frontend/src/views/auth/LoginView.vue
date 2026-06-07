@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/auth'
 import { useForm } from '../../composables/useForm'
@@ -18,6 +18,8 @@ const route = useRoute()
 const authStore = useAuthStore()
 const showPassword = ref(false)
 const reasonMessage = ref('')
+const countdown = ref(0)
+let timer = null
 
 onMounted(() => {
   const reason = route.query.reason
@@ -84,8 +86,42 @@ const handleLogin = async () => {
     setErrors(result.error)
     form.email = ''    // Riset email
     form.password = '' // Riset password
+    
+    const err = result.error
+    const retryAfter = Number(err?.response?.data?.data?.retry_after_seconds || err?.response?.headers?.['retry-after'] || 0)
+    if (err?.response?.status === 429 && retryAfter > 0) {
+      startCountdown(retryAfter)
+    }
   }
 }
+
+const startCountdown = (duration) => {
+  if (timer) clearInterval(timer)
+  countdown.value = duration
+  
+  const updateMsg = (secs) => {
+    const msg = `Terlalu banyak percobaan. Coba lagi dalam ${secs} detik.`
+    authStore.error = msg
+    errors.value = { _general: [msg] }
+  }
+
+  updateMsg(countdown.value)
+  
+  timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+      authStore.error = null
+      errors.value = {}
+    } else {
+      updateMsg(countdown.value)
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <template>
@@ -189,7 +225,7 @@ const handleLogin = async () => {
             <button 
               type="submit" 
               class="btn-primary w-full !h-[56px] !rounded-xl shadow-2xl shadow-indigo-200/50 flex items-center justify-center gap-3 active:scale-[0.98] transition-all group"
-              :disabled="authStore.loading"
+              :disabled="authStore.loading || countdown > 0"
             >
               <div v-if="authStore.loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               <span class="uppercase text-[13px] font-black tracking-[0.2em]">{{ authStore.loading ? 'Signing In...' : 'Sign In' }}</span>

@@ -3,6 +3,7 @@
 package mocks
 
 import (
+	dto "github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	auditdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/domain"
 	bun "github.com/uptrace/bun"
 
@@ -96,6 +97,24 @@ func (_m *AuditLogService) Log(ctx context.Context, db bun.IDB, userID uint, use
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, bun.IDB, uint, string, string, string, string, uint, map[string]interface{}, map[string]interface{}, string, string) error); ok {
 		r0 = rf(ctx, db, userID, userName, role, action, entityType, entityID, oldValues, newValues, ipAddress, userAgent)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// LogMeta provides a mock function with given fields: ctx, db, audit, action, entityType, entityID, oldValues, newValues, description
+func (_m *AuditLogService) LogMeta(ctx context.Context, db bun.IDB, audit dto.AuditMeta, action string, entityType string, entityID uint, oldValues map[string]interface{}, newValues map[string]interface{}, description string) error {
+	ret := _m.Called(ctx, db, audit, action, entityType, entityID, oldValues, newValues, description)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LogMeta")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, bun.IDB, dto.AuditMeta, string, string, uint, map[string]interface{}, map[string]interface{}, string) error); ok {
+		r0 = rf(ctx, db, audit, action, entityType, entityID, oldValues, newValues, description)
 	} else {
 		r0 = ret.Error(0)
 	}

@@ -18,6 +18,20 @@ const getApiPath = (url = '') => {
     return String(url || '').replace(axios.defaults.baseURL, '').replace(/^\/+/, '').split('?')[0]
 }
 
+const getDeviceID = () => {
+    const key = 'schoolpay_device_id'
+    try {
+        let deviceID = localStorage.getItem(key)
+        if (!deviceID) {
+            deviceID = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+            localStorage.setItem(key, deviceID)
+        }
+        return deviceID
+    } catch (e) {
+        return ''
+    }
+}
+
 const getOfflineWritePolicy = (config) => {
     const method = (config.method || 'get').toLowerCase()
     if (method === 'get') return { type: 'read' }
@@ -166,6 +180,14 @@ axios.interceptors.request.use(
             }
         }
 
+        config.headers = config.headers || {}
+        const deviceID = getDeviceID()
+        if (deviceID) {
+            config.headers['X-Device-ID'] = deviceID
+        }
+        config.headers['X-App-Platform'] = 'Web'
+        config.headers['X-App-Version'] = '1.0.0'
+
         const token = authStore.token
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`
@@ -258,6 +280,20 @@ axios.interceptors.response.use(
             if (cachedResponse) return cachedResponse
 
             return Promise.reject(error)
+        }
+
+        if (error.response?.status === 429) {
+            const retryAfter = Number(error.response?.data?.data?.retry_after_seconds || error.response?.headers?.['retry-after'] || 0)
+            const message = retryAfter > 0
+                ? `Terlalu banyak request. Coba lagi dalam ${retryAfter} detik.`
+                : (error.response?.data?.message || 'Terlalu banyak request. Coba lagi sebentar lagi.')
+
+            window.dispatchEvent(new CustomEvent('rate-limit-error', {
+                detail: {
+                    message,
+                    retryAfterSeconds: retryAfter
+                }
+            }))
         }
 
         if (error.response && error.response.status === 401 && !originalRequest._retry &&

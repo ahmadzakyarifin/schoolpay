@@ -73,9 +73,4 @@ func (d CustomDate) Time() time.Time {
 	return time.Time(d)
 }
 
-func FormatCustomDateID(d *CustomDate) string {
-	if d == nil {
-		return "-"
-	}
-	return FormatTimeID(time.Time(*d))
-}
+

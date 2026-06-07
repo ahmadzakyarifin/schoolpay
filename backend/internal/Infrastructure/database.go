@@ -25,13 +25,17 @@ func ConnectDB(cfg config.Config) (*bun.DB, error) {
 		return nil, fmt.Errorf("gagal koneksi database: %w", err)
 	}
 
+	if err := sqldb.Ping(); err != nil {
+		return nil, fmt.Errorf("gagal ping database: %w", err)
+	}
+
 	db := bun.NewDB(sqldb, mysqldialect.New())
 
-	// Add debug hook for logging queries in development
-	db.AddQueryHook(bundebug.NewQueryHook(
-		bundebug.WithVerbose(true),
-		bundebug.FromEnv("BUNDEBUG"),
-	))
+	if cfg.AppEnv != "production" {
+		db.AddQueryHook(bundebug.NewQueryHook(
+			bundebug.WithVerbose(true),
+		))
+	}
 
 	return db, nil
 }

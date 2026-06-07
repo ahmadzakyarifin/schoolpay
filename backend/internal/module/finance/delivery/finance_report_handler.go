@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -87,10 +87,10 @@ func (h *FinanceReportHandler) GetArrears(c *gin.Context) {
 
 	list, total, err := h.s.GetArrears(c.Request.Context(), page, limit, academicYear, uint(classID), uint(majorID), uint(billTypeID), search, start, end)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{
 		"data":  list,
 		"total": total,
 	})
@@ -116,7 +116,7 @@ func (h *FinanceReportHandler) ExportTrend(c *gin.Context) {
 
 	data, err := h.s.ExportTrendExcel(c.Request.Context(), start, end, interval, academicYear, uint(classID), uint(majorID))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 

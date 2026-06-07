@@ -16,6 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api/main.go
 # Stage 2: Run
 FROM alpine:latest
 ENV TZ=Asia/Jakarta
+RUN apk add --no-cache tzdata
 
 WORKDIR /app
 

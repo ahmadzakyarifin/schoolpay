@@ -1,92 +1,140 @@
 package middleware
 
 import (
-	"context"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
 	"net/http"
-	"sync"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis_rate/v10"
-	"github.com/redis/go-redis/v9"
-	"golang.org/x/time/rate"
+	"github.com/ulule/limiter/v3"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
 )
 
-type localRateLimiter struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
+var globalStore = memory.NewStoreWithOptions(limiter.StoreOptions{
+	Prefix:          "rate_limit",
+	CleanUpInterval: limiter.DefaultCleanUpInterval,
+})
+
+type emailPayload struct {
+	Email string `json:"email"`
 }
 
-var localFallback = struct {
-	sync.Mutex
-	clients map[string]*localRateLimiter
-}{clients: make(map[string]*localRateLimiter)}
-
-func allowLocalFallback(key string, r rate.Limit, burst int) bool {
-	localFallback.Lock()
-	defer localFallback.Unlock()
-
-	now := time.Now()
-	for clientKey, client := range localFallback.clients {
-		if now.Sub(client.lastSeen) > 10*time.Minute {
-			delete(localFallback.clients, clientKey)
-		}
+// Fase sebelum login / publik: saringan bertingkat IP -> device -> email.
+func RateLimitAuthSaringan(scope string, target string, maxRequests int64) gin.HandlerFunc {
+	if maxRequests < 1 {
+		maxRequests = 1
 	}
-
-	client, ok := localFallback.clients[key]
-	if !ok {
-		client = &localRateLimiter{limiter: rate.NewLimiter(r, burst)}
-		localFallback.clients[key] = client
-	}
-	client.lastSeen = now
-	return client.limiter.Allow()
-}
-
-// RateLimitMiddleware uses Redis for cluster-safe limiting and falls back to
-// a local token bucket when Redis is temporarily unavailable. The fallback keeps
-// auth/payment endpoints protected instead of silently allowing unlimited traffic.
-func RateLimitMiddleware(rdb *redis.Client, prefix string, r rate.Limit, b int) gin.HandlerFunc {
-	limiter := redis_rate.NewLimiter(rdb)
-
-	var redisLimit redis_rate.Limit
-	if r < 1 {
-		reqPerMin := int(r * 60)
-		if reqPerMin < 1 {
-			reqPerMin = 1
-		}
-		redisLimit = redis_rate.PerMinute(reqPerMin)
-	} else {
-		redisLimit = redis_rate.PerSecond(int(r))
-	}
-	redisLimit.Burst = b
+	instance := limiter.New(globalStore, limiter.Rate{Period: time.Minute, Limit: maxRequests})
 
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		key := "rate_limit:" + prefix + ":" + ip
-		ctx := context.Background()
+		var key string
 
-		res, err := limiter.Allow(ctx, key, redisLimit)
-		if err != nil {
-			if !allowLocalFallback(key, r, b) {
-				c.JSON(http.StatusTooManyRequests, gin.H{
-					"status":  "error",
-					"message": "terlalu banyak permintaan, silakan coba lagi nanti",
-				})
-				c.Abort()
+		switch target {
+		case "ip":
+			key = "ip:" + c.ClientIP()
+
+		case "device":
+			deviceID := strings.TrimSpace(c.GetHeader("X-Device-ID"))
+			if deviceID == "" {
+				c.Next()
 				return
 			}
+			if len(deviceID) > 80 {
+				deviceID = deviceID[:80]
+			}
+			key = "device:" + shortHash(deviceID)
+
+		case "email":
+			var payload emailPayload
+			if err := c.ShouldBindBodyWithJSON(&payload); err != nil {
+				c.Next()
+				return
+			}
+			if body, exists := c.Get(gin.BodyBytesKey); exists {
+				if bodyBytes, ok := body.([]byte); ok {
+					c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				}
+			}
+
+			email := strings.ToLower(strings.TrimSpace(payload.Email))
+			if email == "" {
+				c.Next()
+				return
+			}
+			key = "email:" + shortHash(email)
+
+		default:
 			c.Next()
 			return
 		}
 
-		if res.Allowed == 0 {
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"status":  "error",
-				"message": "terlalu banyak permintaan, silakan coba lagi nanti",
+		executeLimit(c, instance, scope+":"+key)
+	}
+}
+
+// Fase setelah login: selalu kunci berdasarkan user_id dari AuthMiddleware.
+func RateLimitPerUser(scope string, maxRequests int64) gin.HandlerFunc {
+	if maxRequests < 1 {
+		maxRequests = 1
+	}
+	instance := limiter.New(globalStore, limiter.Rate{Period: time.Minute, Limit: maxRequests})
+
+	return func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists || strings.TrimSpace(fmt.Sprint(userID)) == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"status":  false,
+				"message": "Akses ditolak. Sesi login tidak valid.",
+				"data":    nil,
 			})
-			c.Abort()
 			return
 		}
-		c.Next()
+
+		executeLimit(c, instance, scope+":user:"+fmt.Sprint(userID))
 	}
+}
+
+func executeLimit(c *gin.Context, instance *limiter.Limiter, fullKey string) {
+	info, err := instance.Get(c.Request.Context(), fullKey)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status":  false,
+			"message": "Gagal memproses sistem keamanan rate limit.",
+			"data":    nil,
+		})
+		return
+	}
+
+	c.Header("X-RateLimit-Limit", strconv.FormatInt(info.Limit, 10))
+	c.Header("X-RateLimit-Remaining", strconv.FormatInt(info.Remaining, 10))
+	c.Header("X-RateLimit-Reset", strconv.FormatInt(info.Reset, 10))
+
+	if info.Reached {
+		retryAfter := int(info.Reset - time.Now().Unix())
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+
+		c.Header("Retryk-After", strconv.Itoa(retryAfter))
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+			"status":  false,
+			"message": "Terlalu banyak request. Mohon tunggu beberapa saat.",
+			"data":    gin.H{"retry_after_seconds": retryAfter},
+		})
+		return
+	}
+
+	c.Next()
+}
+
+func shortHash(value string) string {
+	hash := sha256.Sum256([]byte(value))
+
+	return hex.EncodeToString(hash[:])[:16]
 }

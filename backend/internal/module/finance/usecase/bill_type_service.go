@@ -8,7 +8,7 @@ import (
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 )
 
@@ -56,7 +56,7 @@ func (s *billTypeService) Create(ctx context.Context, b *domain.BillType) error 
 
 	err = s.repo.Create(ctx, b)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"name": b.Name, "description": b.Description, "type": b.Type, "default_amount": b.DefaultAmount}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "CREATE", "bill_types", b.ID, nil, newVals, ipAddress, userAgent)
 	}
@@ -95,7 +95,7 @@ func (s *billTypeService) Update(ctx context.Context, b *domain.BillType) error 
 	existing, _ := s.repo.FindByID(ctx, b.ID)
 	err = s.repo.Update(ctx, b)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"name": existing.Name, "description": existing.Description, "type": existing.Type, "default_amount": existing.DefaultAmount}
 		newVals := map[string]interface{}{"name": b.Name, "description": b.Description, "type": b.Type, "default_amount": b.DefaultAmount}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "UPDATE", "bill_types", b.ID, oldVals, newVals, ipAddress, userAgent)
@@ -123,7 +123,7 @@ func (s *billTypeService) Delete(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err = s.repo.Delete(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"name": existing.Name, "status": "active"}
 		newVals := map[string]interface{}{"status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "bill_types", id, oldVals, newVals, ipAddress, userAgent)
@@ -135,7 +135,7 @@ func (s *billTypeService) Restore(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.Restore(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"name": existing.Name, "status": "deleted"}
 		newVals := map[string]interface{}{"status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "bill_types", id, oldVals, newVals, ipAddress, userAgent)
@@ -147,7 +147,7 @@ func (s *billTypeService) ToggleStatus(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.ToggleStatus(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive}
 		newVals := map[string]interface{}{"is_active": !existing.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "TOGGLE_STATUS", "bill_types", id, oldVals, newVals, ipAddress, userAgent)
@@ -167,7 +167,7 @@ func (s *billTypeService) BulkDelete(ctx context.Context, ids []uint) error {
 func (s *billTypeService) BulkRestore(ctx context.Context, ids []uint) error {
 	err := s.repo.BulkRestore(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}

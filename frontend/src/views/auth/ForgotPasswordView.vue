@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
 import { 
   Key as KeyIcon, 
@@ -14,6 +14,24 @@ const email = ref('')
 const loading = ref(false)
 const error = ref(null)
 const success = ref(false)
+const countdown = ref(0)
+let timer = null
+
+const startCountdown = (duration) => {
+  if (timer) clearInterval(timer)
+  countdown.value = duration
+  error.value = `Terlalu banyak request. Coba lagi dalam ${countdown.value} detik.`
+  
+  timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+      error.value = null
+    } else {
+      error.value = `Terlalu banyak request. Coba lagi dalam ${countdown.value} detik.`
+    }
+  }, 1000)
+}
 
 const handleSubmit = async () => {
   loading.value = true
@@ -22,12 +40,22 @@ const handleSubmit = async () => {
   try {
     await axios.post('auth/forgot-password', { email: email.value })
     success.value = true
+    if (timer) clearInterval(timer)
   } catch (err) {
-    error.value = err.response?.data?.message || 'Gagal mengirim link reset'
+    const retryAfter = Number(err.response?.data?.data?.retry_after_seconds || err.response?.headers?.['retry-after'] || 0)
+    if (err.response?.status === 429 && retryAfter > 0) {
+      startCountdown(retryAfter)
+    } else {
+      error.value = err.response?.data?.message || 'Gagal mengirim link reset'
+    }
   } finally {
     loading.value = false
   }
 }
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <template>
@@ -75,7 +103,7 @@ const handleSubmit = async () => {
             <button 
               type="submit" 
               class="btn-primary w-full !h-[56px] !rounded-xl shadow-2xl shadow-indigo-200/50 flex items-center justify-center gap-3 active:scale-[0.98] transition-all group"
-              :disabled="loading"
+              :disabled="loading || countdown > 0"
             >
               <div v-if="loading" class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               <span class="uppercase text-xs font-black tracking-widest">{{ loading ? 'Sending...' : 'Send Reset Link' }}</span>

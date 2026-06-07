@@ -1,4 +1,5 @@
 <script setup>
+import { computed, watch } from 'vue'
 import { Filter as FilterIcon, X as CloseIcon, ChevronDown as ChevronDownIcon, Calendar as CalendarIcon, Clock as ClockIcon, GraduationCap as StudentIcon } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -15,6 +16,52 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'apply', 'reset'])
+
+const filteredMajors = computed(() => {
+  let result = props.majors || []
+  if (props.filters.academic_year_id) {
+    const ayId = Number(props.filters.academic_year_id)
+    result = result.filter(m => m.year_ids?.includes(ayId))
+  }
+  return result
+})
+
+const filteredClasses = computed(() => {
+  let result = props.classes || []
+  if (props.filters.academic_year_id) {
+    const ayId = Number(props.filters.academic_year_id)
+    result = result.filter(c => c.academic_year_ids?.includes(ayId))
+  }
+  if (props.filters.major_id) {
+    const majorId = Number(props.filters.major_id)
+    result = result.filter(c => c.major_id === majorId)
+  }
+  return result
+})
+
+watch(() => props.filters.major_id, (newMajor) => {
+  if (newMajor) {
+    const majorIdNum = Number(newMajor)
+    const selectedClass = props.classes?.find(c => c.id === Number(props.filters.class_id))
+    if (selectedClass && selectedClass.major_id !== majorIdNum) {
+      props.filters.class_id = ''
+    }
+  }
+})
+
+watch(() => props.filters.class_id, (newClass) => {
+  if (newClass) {
+    const selectedClass = props.classes?.find(c => c.id === Number(newClass))
+    if (selectedClass && selectedClass.major_id) {
+      props.filters.major_id = String(selectedClass.major_id)
+    }
+  }
+})
+
+watch(() => props.filters.academic_year_id, () => {
+  props.filters.major_id = ''
+  props.filters.class_id = ''
+})
 </script>
 
 <template>
@@ -124,9 +171,9 @@ const emit = defineEmits(['update:modelValue', 'apply', 'reset'])
             <div class="flex flex-col gap-2">
               <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Jurusan / Major</label>
               <div class="relative">
-                <select v-model="filters.major_id" class="w-full py-3 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-50 text-xs font-bold text-slate-700 pr-8 shadow-sm cursor-pointer outline-none transition-all">
+                <select v-model="filters.major_id" :disabled="!!filters.class_id" class="w-full py-3 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-50 text-xs font-bold text-slate-700 pr-8 shadow-sm cursor-pointer outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                   <option value="">Semua Jurusan</option>
-                  <option v-for="m in majors" :key="m.id" :value="m.id">{{ m.name }}</option>
+                  <option v-for="m in filteredMajors" :key="m.id" :value="m.id">{{ m.name }}</option>
                 </select>
                 <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                   <ChevronDownIcon class="w-3.5 h-3.5" />
@@ -140,7 +187,7 @@ const emit = defineEmits(['update:modelValue', 'apply', 'reset'])
               <div class="relative">
                 <select v-model="filters.class_id" class="w-full py-3 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-50 text-xs font-bold text-slate-700 pr-8 shadow-sm cursor-pointer outline-none transition-all">
                   <option value="">Semua Kelas</option>
-                  <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+                  <option v-for="c in filteredClasses" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
                 <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                   <ChevronDownIcon class="w-3.5 h-3.5" />

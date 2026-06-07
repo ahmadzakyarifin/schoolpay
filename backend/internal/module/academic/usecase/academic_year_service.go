@@ -8,7 +8,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 )
 
@@ -100,7 +100,7 @@ func (s *academicYearService) Create(ctx context.Context, ay *domain.AcademicYea
 	}
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{
 			"year": ay.Year, "major_ids": ay.MajorIDs, "class_ids": ay.ClassIDs, "is_active": ay.IsActive,
 		}
@@ -142,7 +142,7 @@ func (s *academicYearService) Update(ctx context.Context, ay *domain.AcademicYea
 	}
 
 	if existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"year": existing.Year, "is_active": existing.IsActive}
 		newVals := map[string]interface{}{"year": ay.Year, "major_ids": ay.MajorIDs, "class_ids": ay.ClassIDs, "is_active": ay.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "UPDATE", "academic_years", ay.ID, oldVals, newVals, ipAddress, userAgent)
@@ -165,7 +165,7 @@ func (s *academicYearService) Delete(ctx context.Context, id uint) error {
 
 	err = s.repo.Delete(ctx, id)
 	if err == nil && ay != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"year": ay.Year, "is_active": ay.IsActive, "status": "active"}
 		newVals := map[string]interface{}{"year": ay.Year, "is_active": false, "status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "academic_years", id, oldVals, newVals, ipAddress, userAgent)
@@ -177,7 +177,7 @@ func (s *academicYearService) Restore(ctx context.Context, id uint) error {
 	ay, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.Restore(ctx, id)
 	if err == nil && ay != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"year": ay.Year, "is_active": ay.IsActive, "status": "deleted"}
 		newVals := map[string]interface{}{"year": ay.Year, "is_active": true, "status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "academic_years", id, oldVals, newVals, ipAddress, userAgent)
@@ -202,7 +202,7 @@ func (s *academicYearService) BulkDelete(ctx context.Context, ids []uint) error 
 
 	err := s.repo.BulkDelete(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "active"}
 			newVals := map[string]interface{}{"status": "deleted"}
@@ -215,7 +215,7 @@ func (s *academicYearService) BulkDelete(ctx context.Context, ids []uint) error 
 func (s *academicYearService) BulkRestore(ctx context.Context, ids []uint) error {
 	err := s.repo.BulkRestore(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}

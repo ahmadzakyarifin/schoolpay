@@ -28,14 +28,11 @@
     </Teleport>
 
     <!-- Main Table Card -->
-    <div class="bg-white rounded border border-slate-200 shadow-sm flex flex-col min-h-[710px] overflow-hidden">
-      <div class="px-6 py-6 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <div class="w-2 h-6 bg-indigo-500 rounded-full"></div>
-          <h3 class="font-black text-slate-700 text-sm uppercase tracking-[0.2em]">Riwayat Aktivitas & Log Audit</h3>
-        </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col min-h-[710px] overflow-hidden">
+      <div class="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <span class="text-xs font-bold text-slate-400">Menampilkan {{ logs.length }} dari {{ totalData }} log</span>
+          <div class="w-1.5 h-5 bg-indigo-500 rounded-full"></div>
+          <h3 class="font-black text-slate-700 text-xs uppercase tracking-widest">Riwayat Aktivitas & Log Audit</h3>
         </div>
       </div>
 
@@ -43,55 +40,54 @@
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              <th class="py-4 px-4"># ID</th>
-              <th class="py-4 px-4">Waktu (WIB)</th>
-              <th class="py-4 px-4">Pengguna / Admin</th>
-              <th class="py-4 px-4">Role</th>
-              <th class="py-4 px-4">Aksi</th>
-              <th class="py-4 px-4">Entitas (Target ID)</th>
-              <th class="py-4 px-4">IP Address</th>
-              <th class="py-4 px-4 text-right">Detail</th>
+            <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <th class="py-3 px-4"># ID</th>
+              <th class="py-3 px-4">Waktu (WIB)</th>
+              <th class="py-3 px-4">Pengguna / Admin</th>
+              <th class="py-3 px-4">Role</th>
+              <th class="py-3 px-4">Aksi</th>
+              <th class="py-3 px-4">Entitas (Target ID)</th>
+              <th class="py-3 px-4">IP Address</th>
+              <th class="py-3 px-4 text-center w-[120px]">Detail</th>
             </tr>
           </thead>
-          <tbody class="text-xs font-medium divide-y divide-slate-100/80">
+          <tbody class="text-xs font-semibold divide-y divide-slate-100/80">
             <tr v-if="loading" class="animate-pulse">
               <td colspan="8" class="py-12 text-center text-slate-400 font-bold">Memuat data log audit...</td>
             </tr>
             <tr v-else-if="logs.length === 0">
               <td colspan="8" class="py-20 px-6 text-center">
                 <div class="flex flex-col items-center justify-center text-center mx-auto">
-                  <div class="w-20 h-20 bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-slate-300 mb-6 border-4 border-white shadow-xl shadow-slate-200/50 mx-auto">
-                    <DatabaseIcon class="w-10 h-10" />
+                  <div class="w-16 h-16 bg-slate-100 rounded-xl flex items-center justify-center text-slate-300 mb-4 border border-slate-200 shadow-sm mx-auto">
+                    <DatabaseIcon class="w-8 h-8" />
                   </div>
-                  <h3 class="text-lg font-black text-slate-700 tracking-tight mb-2">Riwayat Aktivitas Tidak Ditemukan</h3>
+                  <h3 class="text-base font-black text-slate-700 tracking-tight mb-1">Riwayat Aktivitas Tidak Ditemukan</h3>
                   <p class="text-slate-400 text-xs font-medium max-w-xs mx-auto">Belum ada log audit yang terekam atau coba sesuaikan filter pencarian Anda.</p>
                 </div>
               </td>
             </tr>
-            <tr v-else v-for="log in logs" :key="log.id" class="hover:bg-slate-50/80 transition-colors group">
-              <td class="py-4 px-4 font-black text-slate-700">#{{ log.id }}</td>
-              <td class="py-4 px-4 text-slate-600">{{ formatDate(log.created_at) }}</td>
-              <td class="py-4 px-4 font-bold text-slate-500 text-xs uppercase tracking-wider truncate max-w-[180px]">{{ log.user_name }}</td>
-              <td class="py-4 px-4">
-                <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 border border-slate-200/60">
+            <tr v-else v-for="log in logs" :key="log.id" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600">
+              <td class="py-3 px-4 font-black text-slate-700">#{{ log.id }}</td>
+              <td class="py-3 px-4 text-slate-600">{{ formatDate(log.created_at) }}</td>
+              <td class="py-3 px-4 font-bold text-slate-500 text-xs uppercase tracking-wider truncate max-w-[180px]">{{ log.user_name }}</td>
+              <td class="py-3 px-4">
+                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border bg-slate-100 text-slate-600 border-slate-200/60">
                   {{ log.role }}
                 </span>
               </td>
-              <td class="py-4 px-4 font-black text-[10px] uppercase tracking-widest text-slate-700">
+              <td class="py-3 px-4 font-black text-[10px] uppercase tracking-widest text-slate-700">
                 {{ humanizeAction(log.action) }}
               </td>
-              <td class="py-4 px-4 font-bold text-slate-700">
+              <td class="py-3 px-4 font-bold text-slate-700">
                 {{ humanizeEntity(log.entity_type) }} <span class="text-slate-400 font-normal">(ID: {{ log.entity_id }})</span>
               </td>
-              <td class="py-4 px-4 text-slate-500 font-mono text-[11px]">{{ log.ip_address || '-' }}</td>
-              <td class="py-4 px-4 text-right">
+              <td class="py-3 px-4 text-slate-500 font-mono text-[11px]">{{ log.ip_address || '-' }}</td>
+              <td class="py-3 px-4 text-center">
                 <button 
                   @click="openDetailModal(log)" 
-                  class="font-bold text-xs text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1.5 ml-auto cursor-pointer"
+                  class="px-2.5 py-1.5 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold rounded-lg text-[9px] uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm whitespace-nowrap cursor-pointer mx-auto"
                 >
-                  <EyeIcon class="w-4 h-4" />
-                  <span>Lihat Detail</span>
+                  <EyeIcon class="w-3.5 h-3.5" /> Detail
                 </button>
               </td>
             </tr>
@@ -100,7 +96,7 @@
       </div>
 
       <!-- Pagination -->
-      <div class="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between mt-auto">
+      <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between mt-auto">
         <div class="flex items-center gap-6">
           <div class="flex items-center gap-3">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilkan</span>
@@ -115,20 +111,20 @@
         </div>
         <div class="flex items-center gap-2">
           <button v-if="totalPages > 1" @click="fetchLogs(page - 1)" :disabled="page === 1 || loading" 
-            class="w-10 h-10 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
-            <PrevIcon class="w-4 h-4" />
+            class="w-8 h-8 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
+            <PrevIcon class="w-3.5 h-3.5" />
           </button>
-          <div class="flex items-center gap-1.5 mx-1">
+          <div class="flex items-center gap-1">
             <button v-for="p in visiblePages" :key="p" @click="fetchLogs(p)"
-              class="w-10 h-10 rounded-xl text-[10px] font-black transition-all border flex items-center justify-center shadow-sm cursor-pointer"
+              class="w-8 h-8 rounded-lg text-[10px] font-black transition-all border flex items-center justify-center shadow-sm cursor-pointer"
               :class="page === p ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20' : 
-                                 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'">
+                                 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'">
               {{ p }}
             </button>
           </div>
           <button v-if="totalPages > 1" @click="fetchLogs(page + 1)" :disabled="page >= totalPages || loading" 
-            class="w-10 h-10 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
-            <NextIcon class="w-4 h-4" />
+            class="w-8 h-8 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
+            <NextIcon class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

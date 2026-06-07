@@ -635,11 +635,12 @@ const visiblePages = computed(() => {
     </Teleport>
 
     <!-- Main Content Table -->
-    <div class="bg-white rounded border border-slate-200 shadow-sm flex flex-col min-h-[710px] overflow-hidden">
-      <div class="px-6 py-6 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <div class="w-2 h-6 bg-indigo-500 rounded-full"></div>
-          <h3 class="font-black text-slate-700 text-sm uppercase tracking-[0.2em]">{{ showHistory ? 'Riwayat Data Terhapus' : 'Data Operasional Pengguna' }}</h3>
+    <div class="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col min-h-[710px] overflow-hidden">
+      <!-- Table Header -->
+      <div class="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+        <div class="flex items-center gap-2 font-black text-slate-700 text-xs uppercase tracking-widest">
+          <ParentIcon class="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+          <span>{{ showHistory ? 'Riwayat Data Terhapus' : 'Data Operasional Pengguna' }}</span>
         </div>
 
         <div class="flex items-center gap-3">
@@ -651,18 +652,18 @@ const visiblePages = computed(() => {
             @delete="confirmBulkDelete"
             @restore="confirmBulkRestore"
           />
-          <button @click="handleExport" :disabled="isOffline" :title="isOffline ? 'Export Excel membutuhkan server online agar data terbaru.' : 'Ekspor Excel'" :class="['font-bold py-2 px-4 rounded-xl border text-[10px] flex items-center gap-2 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-50']">
+          <button @click="handleExport" :disabled="isOffline" :title="isOffline ? 'Export Excel membutuhkan server online agar data terbaru.' : 'Ekspor Excel'" :class="['font-bold py-1.5 px-3 rounded-xl border text-[10px] flex items-center gap-1.5 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 hover:bg-slate-50']">
             <ExcelIcon class="w-3.5 h-3.5" :class="isOffline ? 'text-amber-600' : 'text-emerald-600'" />
             <span>{{ isOffline ? 'Excel Online Saja' : 'Ekspor Excel' }}</span>
           </button>
 
-          <button @click="showHistory = !showHistory" class="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold py-2 px-4 rounded-xl text-[10px] flex items-center gap-2 transition-all shadow-sm">
+          <button @click="showHistory = !showHistory" class="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold py-1.5 px-3 rounded-xl text-[10px] flex items-center gap-1.5 transition-all shadow-sm">
             <HistoryIcon v-if="!showHistory" class="w-3.5 h-3.5" />
             <ResetIcon v-else class="w-3.5 h-3.5 rotate-180" />
-            <span>{{ showHistory ? 'Kembali ke Data Aktif' : 'Lihat Riwayat Hapus' }}</span>
+            <span>{{ showHistory ? 'Kembali' : 'Riwayat Hapus' }}</span>
           </button>
-          <button v-if="!showHistory" @click="openAddModal" class="bg-indigo-600 text-white font-black py-2 px-5 rounded-xl text-xs flex items-center gap-2">
-            <PlusIcon class="w-4 h-4" />
+          <button v-if="!showHistory" @click="openAddModal" class="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-1.5 px-4 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-100 transition-all text-[10px] uppercase tracking-widest shrink-0">
+            <PlusIcon class="w-3.5 h-3.5" />
             <span>Tambah Data</span>
           </button>
         </div>
@@ -686,7 +687,7 @@ const visiblePages = computed(() => {
       />
 
       <!-- Pagination -->
-      <div class="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+      <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
         <div class="flex items-center gap-6">
           <div class="flex items-center gap-3">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilkan</span>
@@ -709,18 +710,18 @@ const visiblePages = computed(() => {
             v-if="totalPages > 1"
             @click="page > 1 && (page--)" 
             :disabled="page <= 1" 
-            class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
           >
-            <PrevIcon class="w-4 h-4" />
+            <PrevIcon class="w-3.5 h-3.5" />
           </button>
 
-          <!-- Page Numbers (Max 3) -->
+          <!-- Page Numbers -->
           <div class="flex items-center gap-1">
             <button 
               v-for="p in visiblePages" 
               :key="p"
               @click="page = p"
-              class="w-10 h-10 flex items-center justify-center rounded-xl text-[10px] font-black transition-all cursor-pointer"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-black transition-all cursor-pointer"
               :class="p === page 
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
                 : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'"
@@ -734,9 +735,9 @@ const visiblePages = computed(() => {
             v-if="totalPages > 1"
             @click="page < totalPages && (page++)" 
             :disabled="page >= totalPages" 
-            class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
           >
-            <NextIcon class="w-4 h-4" />
+            <NextIcon class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

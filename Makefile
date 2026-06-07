@@ -1,7 +1,7 @@
 .PHONY: test-db-up test-db-down test-backend test-frontend test-all mockery
 
 test-db-up:
-	docker compose -f docker-compose.test.yml up -d test-db test-redis
+	docker compose -f docker-compose.test.yml up -d test-db
 
 test-db-down:
 	docker compose -f docker-compose.test.yml down -v

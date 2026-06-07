@@ -131,23 +131,25 @@ func (_m *AuthRepo) FindByEmail(ctx context.Context, email string) (*domain.User
 	return r0, r1
 }
 
-// FindRefreshToken provides a mock function with given fields: ctx, token
-func (_m *AuthRepo) FindRefreshToken(ctx context.Context, token string) (uint, error) {
+// FindUserByRefreshToken provides a mock function with given fields: ctx, token
+func (_m *AuthRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error) {
 	ret := _m.Called(ctx, token)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FindRefreshToken")
+		panic("no return value specified for FindUserByRefreshToken")
 	}
 
-	var r0 uint
+	var r0 *domain.User
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (uint, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*domain.User, error)); ok {
 		return rf(ctx, token)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) uint); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *domain.User); ok {
 		r0 = rf(ctx, token)
 	} else {
-		r0 = ret.Get(0).(uint)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*domain.User)
+		}
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {

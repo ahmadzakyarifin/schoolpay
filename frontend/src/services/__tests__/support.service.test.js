@@ -23,25 +23,19 @@ describe('supportService API contract', () => {
     expect(axios.get).toHaveBeenCalledWith('support/conversations', { params })
   })
 
-  it('loads messages for one conversation', () => {
-    supportService.getMessages(9)
-
-    expect(axios.get).toHaveBeenCalledWith('support/conversations/9/messages')
-  })
-
-  it('sends admin reply payload expected by backend', () => {
-    supportService.reply(9, 'Baik, kami cek pembayaran Bapak/Ibu.')
-
-    expect(axios.post).toHaveBeenCalledWith('support/conversations/9/reply', {
-      message: 'Baik, kami cek pembayaran Bapak/Ibu.'
-    })
-  })
-
   it('assigns and closes tickets through PATCH endpoints', () => {
     supportService.assign(9)
     supportService.close(9)
 
     expect(axios.patch).toHaveBeenNthCalledWith(1, 'support/conversations/9/assign')
     expect(axios.patch).toHaveBeenNthCalledWith(2, 'support/conversations/9/close')
+  })
+
+  it('updates ticket status through dropdown endpoint', () => {
+    supportService.updateStatus(9, 'pending')
+
+    expect(axios.patch).toHaveBeenCalledWith('support/conversations/9/status', {
+      status: 'pending'
+    })
   })
 })

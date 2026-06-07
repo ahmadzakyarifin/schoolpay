@@ -13,7 +13,16 @@ export function useForm(initialData = {}) {
     }
 
     // Jika input dari Axios response
-    if (err.response?.data?.errors) {
+    if (err.response?.status === 429) {
+      const retryAfter = Number(err.response?.data?.data?.retry_after_seconds || err.response?.headers?.['retry-after'] || 0)
+      errors.value = {
+        _general: [
+          retryAfter > 0
+            ? `Terlalu banyak request. Coba lagi dalam ${retryAfter} detik.`
+            : (err.response?.data?.message || 'Terlalu banyak request. Coba lagi sebentar lagi.')
+        ]
+      }
+    } else if (err.response?.data?.errors) {
       const rawErrors = err.response.data.errors
       const normalized = {}
       

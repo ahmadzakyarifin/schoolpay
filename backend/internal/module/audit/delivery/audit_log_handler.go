@@ -6,7 +6,7 @@ import (
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	userdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,11 +44,11 @@ func (h *AuditLogHandler) GetLogs(c *gin.Context) {
 
 	logs, total, err := h.service.GetLogs(c.Request.Context(), userObj, filter, page, limit)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Gagal mengambil log audit")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "Gagal mengambil log audit")
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Berhasil mengambil log audit", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "Berhasil mengambil log audit", gin.H{
 		"logs":  logs,
 		"total": total,
 		"page":  page,
@@ -66,9 +66,9 @@ func (h *AuditLogHandler) GetEntityLogs(c *gin.Context) {
 
 	logs, err := h.service.GetEntityLogs(c.Request.Context(), userObj, entityType, uint(entityID))
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Gagal mengambil log spesifik entitas")
+		helper.ErrorResponse(c, http.StatusInternalServerError, "Gagal mengambil log spesifik entitas")
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Berhasil mengambil log spesifik entitas", logs)
+	helper.SuccessResponse(c, http.StatusOK, "Berhasil mengambil log spesifik entitas", logs)
 }

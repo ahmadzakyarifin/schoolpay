@@ -19,6 +19,7 @@ import (
 	notificationusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/midtrans/midtrans-go"
 	"github.com/midtrans/midtrans-go/snap"
 	"github.com/uptrace/bun"
@@ -66,7 +67,7 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 	if depositApplied >= amount {
 		return nil, fmt.Errorf("gagal: pembayaran Midtrans membutuhkan sisa nominal setelah potongan saldo")
 	}
-	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	userID, _, role, _, _ := helper.GetAuditMeta(ctx)
 	if role == "parent" {
 		student, err := s.stuRepo.FindByID(ctx, studentID)
 		if err != nil || student == nil {
@@ -153,10 +154,7 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 		midtrans.Environment = midtrans.Production
 	}
 
-	studentName := "Siswa"
-	if student != nil {
-		studentName = student.Name
-	}
+	studentName := student.Name
 
 	req := &snap.Request{
 		TransactionDetails: midtrans.TransactionDetails{OrderID: p.TransactionRef, GrossAmt: int64(gatewayAmount)},
@@ -164,15 +162,15 @@ func (s *paymentService) CreateIntent(ctx context.Context, studentID uint, amoun
 		Items:              &[]midtrans.ItemDetails{{ID: "BILL-PAY", Name: fmt.Sprintf("Tagihan: %s", studentName), Price: int64(gatewayAmount), Qty: 1}},
 	}
 
-	snapResp, err := snap.CreateTransaction(req)
-	if err != nil {
-		return nil, err
+	snapResp, midtransErr := snap.CreateTransaction(req)
+	if midtransErr != nil {
+		return nil, midtransErr
 	}
 	p.PaymentURL = snapResp.RedirectURL
 	p.SnapToken = snapResp.Token
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"student_id": studentID, "amount": amount, "deposit_applied": depositApplied, "gateway_amount": gatewayAmount, "transaction_ref": p.TransactionRef, "status": p.Status}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "CREATE_PAYMENT_INTENT", "payments", p.ID, nil, newVals, ipAddress, userAgent)
 	}
@@ -349,7 +347,7 @@ func (s *paymentService) moveGatewayPaymentToDeposit(ctx context.Context, p *dom
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			newVals := map[string]interface{}{
 				"student_id": locked.StudentID, "amount": gatewayAmount, "transaction_ref": locked.TransactionRef,
 				"deposit_reason": "GATEWAY_ALLOCATION_FAILED", "allocation_error": allocationErr.Error(),
@@ -371,7 +369,7 @@ func (s *paymentService) GetReceipt(ctx context.Context, paymentID uint) (*domai
 		return nil, err
 	}
 
-	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	userID, _, role, _, _ := helper.GetAuditMeta(ctx)
 	if role == "parent" {
 		student, err := s.stuRepo.FindByID(ctx, p.StudentID)
 		if err != nil || student == nil {
@@ -419,7 +417,7 @@ func (s *paymentService) GetReceipt(ctx context.Context, paymentID uint) (*domai
 
 func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.Payment, billIDs []uint) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		adminID, adminName, role, _, _ := utils.GetAuditMeta(ctx)
+		adminID, adminName, role, _, _ := helper.GetAuditMeta(ctx)
 		createdBy := "SYSTEM"
 		if adminName != "" {
 			createdBy = fmt.Sprintf("ADMIN-%d (%s)", adminID, adminName)
@@ -609,7 +607,9 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 					return err
 				}
 				pd := &domain.PaymentDetail{PaymentID: p.ID, StudentBillID: b.ID, Amount: paymentForThisBill}
-				_ = s.repo.CreateDetail(ctx, tx, pd)
+				if err := s.repo.CreateDetail(ctx, tx, pd); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -639,7 +639,7 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 		s.notifSvc.Notify(notificationusecase.FinanceNotifyJob{StudentID: p.StudentID, Payment: p, NotifType: "payment_success"})
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			newVals := map[string]interface{}{
 				"student_id": p.StudentID, "amount": p.Amount, "deposit_applied": p.DepositApplied, "cash_or_gateway_amount": p.Amount - p.DepositApplied, "transaction_ref": p.TransactionRef, "status": p.Status, "method": p.Method,
 				"is_bypass_rule": p.IsBypassRule, "bypass_reason": stringValue(p.BypassReason), "note": stringValue(p.Note),
@@ -661,7 +661,7 @@ func (s *paymentService) Process(ctx context.Context, studentID uint, p *domain.
 }
 
 func (s *paymentService) GetHistory(ctx context.Context, studentID uint) ([]domain.Payment, error) {
-	userID, _, role, _, _ := utils.GetAuditMeta(ctx)
+	userID, _, role, _, _ := helper.GetAuditMeta(ctx)
 	if role == "parent" {
 		student, err := s.stuRepo.FindByID(ctx, studentID)
 		if err != nil || student == nil {

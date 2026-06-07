@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
@@ -20,7 +21,6 @@ import (
 	webhookrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/repository"
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
-	"github.com/redis/go-redis/v9"
 )
 
 type WebhookService interface {
@@ -38,7 +38,6 @@ type webhookService struct {
 	hub      *websocket.Hub
 	support  supportusecase.SupportService
 	cfg      *config.Config
-	redis    *redis.Client
 }
 
 func NewWebhookService(
@@ -52,13 +51,8 @@ func NewWebhookService(
 	hub *websocket.Hub,
 	support supportusecase.SupportService,
 	cfg *config.Config,
-	redisClients ...*redis.Client,
 ) WebhookService {
-	var redisClient *redis.Client
-	if len(redisClients) > 0 {
-		redisClient = redisClients[0]
-	}
-	return &webhookService{repo: repo, wa: wa, notiRepo: notiRepo, sbRepo: sbRepo, payRepo: payRepo, stuRepo: stuRepo, userRepo: userRepo, hub: hub, support: support, cfg: cfg, redis: redisClient}
+	return &webhookService{repo: repo, wa: wa, notiRepo: notiRepo, sbRepo: sbRepo, payRepo: payRepo, stuRepo: stuRepo, userRepo: userRepo, hub: hub, support: support, cfg: cfg}
 }
 
 func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.RawMessage) error {
@@ -95,9 +89,16 @@ func (s *webhookService) HandleWAHAWebhook(ctx context.Context, payload json.Raw
 				}, "admin")
 			}
 
-			if status == "STOPPED" {
-				fmt.Println("[WA-WEBHOOK] Session STOPPED detected! Attempting auto-restart...")
-				go s.wa.StartSession()
+			// Auto-Wipe / Self-Healing Mechanism (Best Practice)
+			if status == "FAILED" {
+				fmt.Println("[WA-WEBHOOK] Sesi WA terdeteksi FAILED/Korup. Menjalankan Auto-Wipe (Logout)...")
+				go func() {
+					if err := s.wa.LogoutSession(); err != nil {
+						fmt.Printf("[WA-WEBHOOK] Auto-Wipe gagal: %v\n", err)
+					} else {
+						fmt.Println("[WA-WEBHOOK] Auto-Wipe sukses! Sesi telah dibersihkan.")
+					}
+				}()
 			}
 		}
 	}
@@ -219,72 +220,160 @@ func numericAck(value interface{}) (int, bool) {
 	}
 }
 
+// Menyimpan data nomor yang dinonaktifkan bot-nya secara sementara (silent mode)
+var botSilentMute = struct {
+	sync.RWMutex
+	muted map[string]time.Time
+}{
+	muted: make(map[string]time.Time),
+}
+
 func (s *webhookService) handleIncomingMessage(ctx context.Context, payload map[string]interface{}) {
 	from, _ := payload["from"].(string)
+	to, _ := payload["to"].(string)
 	body, _ := payload["body"].(string)
+	fromMe, _ := payload["fromMe"].(bool)
+
+	// Jika pesan dikirim oleh nomor WA sekolah sendiri (outbound/fromMe via WA Web)
+	if fromMe {
+		if to != "" {
+			targetPhone := strings.Split(to, "@")[0]
+			botSilentMute.Lock()
+			// Mute bot untuk nomor tujuan ini selama 2 jam agar admin bisa mengobrol manual dengan tenang
+			botSilentMute.muted[targetPhone] = time.Now().Add(2 * time.Hour)
+			botSilentMute.Unlock()
+			fmt.Printf("[WA-BOT] Admin sedang chatting manual. Bot di-silent untuk nomor %s selama 2 jam.\n", targetPhone)
+		}
+		return
+	}
+
 	if from == "" || body == "" {
 		return
 	}
 
 	cleanPhone := strings.Split(from, "@")[0]
-	if !s.allowIncomingBotMessage(ctx, cleanPhone) {
-		s.sendRateLimitNotice(ctx, from, cleanPhone)
+
+	// Cek apakah nomor pengirim sedang dalam status "silent mode"
+	botSilentMute.RLock()
+	muteUntil, isMuted := botSilentMute.muted[cleanPhone]
+	botSilentMute.RUnlock()
+
+	if isMuted {
+		if time.Now().Before(muteUntil) {
+			// Lewati pemrosesan bot karena admin sedang mengobrol manual dengan orang tua ini
+			return
+		}
+		// Hapus dari cache jika masa mute sudah lewat
+		botSilentMute.Lock()
+		delete(botSilentMute.muted, cleanPhone)
+		botSilentMute.Unlock()
+	}
+
+	// Cek jika nomor pengirim sedang dalam status antrean CS aktif (open/pending)
+	if active, err := s.support.HasActiveConversation(ctx, cleanPhone); err == nil {
+		if active {
+			// Mute bot secara otomatis karena orang tua sedang dalam antrean CS aktif
+			return
+		}
+	} else {
+		fmt.Printf("[WA-BOT] gagal mengecek status percakapan CS untuk %s: %v\n", cleanPhone, err)
+	}
+
+	if !s.allowIncomingBotMessage(cleanPhone) {
+		s.sendRateLimitNotice(from, cleanPhone)
 		return
 	}
 
 	user, err := s.userRepo.FindByPhone(ctx, cleanPhone)
 	if err != nil || user == nil {
-		s.createSupportTicket(ctx, from, body, nil)
+		// Jika nomor HP tidak terdaftar sebagai orang tua, beritahukan informasi kontak admin resmi
+		s.wa.SendChatMessage(from, "Nomor WhatsApp ini belum terdaftar di sistem SchoolPay. Untuk bantuan administrasi, silakan hubungi langsung nomor staf Admin kami secara manual.")
 		return
 	}
 
 	cmd := strings.ToLower(strings.TrimSpace(body))
 	switch {
-	case cmd == "menu" || cmd == "halo" || cmd == "hi":
+	case cmd == "menu" || cmd == "halo" || cmd == "hi" || cmd == "bot":
 		s.sendMenu(from, user.Name)
-	case strings.Contains(cmd, "tagihan"):
+	case cmd == "1" || strings.Contains(cmd, "tagihan"):
 		s.handleCekTagihan(ctx, from, user)
-	case strings.Contains(cmd, "tunggakan"):
+	case cmd == "2" || strings.Contains(cmd, "tunggakan"):
 		s.handleCekTunggakan(ctx, from, user)
-	case strings.Contains(cmd, "pembayaran") || strings.Contains(cmd, "riwayat"):
+	case cmd == "3" || strings.Contains(cmd, "pembayaran") || strings.Contains(cmd, "riwayat"):
 		s.handleCekPembayaran(ctx, from, user)
-	case strings.Contains(cmd, "cara bayar"):
+	case cmd == "4" || strings.Contains(cmd, "cara bayar"):
 		s.sendInstruction(from)
 	case wantsHumanSupport(cmd):
-		s.createSupportTicket(ctx, from, body, user)
+		// Daftarkan tiket bantuan di database agar berbunyi bel notifikasi di admin dashboard
+		if conv, err := s.support.RecordIncoming(ctx, from, user); err == nil && s.hub != nil {
+			parentNameVal := user.Name
+			if conv.ParentName != nil && *conv.ParentName != "" {
+				parentNameVal = *conv.ParentName
+			}
+			s.hub.BroadcastToRoles("SUPPORT_CHAT_UPDATED", map[string]interface{}{
+				"conversation_id": conv.ID,
+				"phone":           conv.PhoneNumber,
+				"parent_name":     parentNameVal,
+			}, "admin")
+		}
+		s.wa.SendChatMessage(from, "Tiket bantuan Anda sudah masuk ke antrean CS Admin SchoolPay.\n\nSilakan tunggu jawaban admin di chat WhatsApp ini. Bot otomatis dinonaktifkan sementara agar percakapan dengan admin tetap rapi.")
 	default:
-		s.createSupportTicket(ctx, from, body, user)
+		// Jika pesan tidak dikenal, kirimkan menu utama
+		s.sendMenu(from, user.Name)
 	}
 }
 
-func (s *webhookService) allowIncomingBotMessage(ctx context.Context, phone string) bool {
-	if s.redis == nil || strings.TrimSpace(phone) == "" {
-		return true
-	}
-	key := "rate_limit:bot_incoming:" + phone
-	count, err := s.redis.Incr(ctx, key).Result()
-	if err != nil {
-		return true
-	}
-	if count == 1 {
-		_ = s.redis.Expire(ctx, key, time.Minute).Err()
-	}
-	return count <= 12
+var botIncomingLimiter = struct {
+	sync.Mutex
+	clients  map[string]int
+	lastSeen map[string]time.Time
+}{
+	clients:  make(map[string]int),
+	lastSeen: make(map[string]time.Time),
 }
 
-func (s *webhookService) sendRateLimitNotice(ctx context.Context, to, phone string) {
-	if s.redis != nil {
-		key := "rate_limit:bot_notice:" + phone
-		ok, err := s.redis.SetNX(ctx, key, "1", time.Minute).Result()
-		if err == nil && !ok {
-			return
+var botNoticeLimiter = struct {
+	sync.Mutex
+	lastNotice map[string]time.Time
+}{
+	lastNotice: make(map[string]time.Time),
+}
+
+func (s *webhookService) allowIncomingBotMessage(phone string) bool {
+	if strings.TrimSpace(phone) == "" {
+		return true
+	}
+	botIncomingLimiter.Lock()
+	defer botIncomingLimiter.Unlock()
+
+	now := time.Now()
+	for p, lastTime := range botIncomingLimiter.lastSeen {
+		if now.Sub(lastTime) > time.Minute {
+			delete(botIncomingLimiter.clients, p)
+			delete(botIncomingLimiter.lastSeen, p)
 		}
 	}
+
+	botIncomingLimiter.clients[phone]++
+	botIncomingLimiter.lastSeen[phone] = now
+
+	return botIncomingLimiter.clients[phone] <= 12
+}
+
+func (s *webhookService) sendRateLimitNotice(to, phone string) {
+	botNoticeLimiter.Lock()
+	defer botNoticeLimiter.Unlock()
+	now := time.Now()
+	if last, ok := botNoticeLimiter.lastNotice[phone]; ok && now.Sub(last) < time.Minute {
+		return
+	}
+	botNoticeLimiter.lastNotice[phone] = now
 	_ = s.wa.SendChatMessage(to, "Pesan Anda terlalu sering masuk. Mohon tunggu sebentar, lalu kirim kembali atau buka portal parent untuk bantuan CS.")
 }
 
 func wantsHumanSupport(cmd string) bool {
-	return strings.Contains(cmd, "cs") ||
+	return cmd == "5" ||
+		strings.Contains(cmd, "cs") ||
 		strings.Contains(cmd, "admin") ||
 		strings.Contains(cmd, "operator") ||
 		strings.Contains(cmd, "manusia") ||
@@ -400,20 +489,4 @@ func (s *webhookService) handleCekPembayaran(ctx context.Context, to string, use
 func (s *webhookService) sendInstruction(to string) {
 	msg := "💳 *INSTRUKSI PEMBAYARAN*\n1. Masuk ke *Portal Parent*.\n2. Pilih tagihan yang belum jatuh tempo.\n3. Bayar melalui metode yang tersedia.\n\nJika tagihan sudah lewat jatuh tempo, pembayaran dilakukan melalui Admin Sekolah.\nKetik *CS* jika perlu bantuan."
 	s.wa.SendChatMessage(to, msg)
-}
-
-func (s *webhookService) createSupportTicket(ctx context.Context, to, body string, user *userauthdomain.User) {
-	if s.support != nil {
-		if conv, err := s.support.RecordIncoming(ctx, to, body, user); err == nil && s.hub != nil {
-			s.hub.BroadcastToRoles("SUPPORT_CHAT_UPDATED", map[string]interface{}{"conversation_id": conv.ID, "phone": conv.PhoneNumber}, "admin")
-			if conv.ParentID != nil {
-				s.hub.BroadcastToUser("SUPPORT_CHAT_UPDATED", map[string]interface{}{"conversation_id": conv.ID, "parent_id": *conv.ParentID}, *conv.ParentID)
-			}
-		}
-	}
-	if user == nil {
-		s.wa.SendChatMessage(to, "Nomor WhatsApp ini belum terdaftar sebagai wali siswa di SchoolPay. Pesan Anda tetap kami teruskan ke antrian CS/Admin agar dapat dibantu.")
-		return
-	}
-	s.wa.SendChatMessage(to, "Pesan Anda sudah masuk ke antrian CS/Admin SchoolPay. Admin akan membalas dari dashboard sekolah, jadi Bapak/Ibu tidak perlu membuka WhatsApp Web.")
 }

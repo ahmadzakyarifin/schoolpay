@@ -4,12 +4,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/notification/usecase"
 	userauthdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 	"github.com/uptrace/bun"
 )
@@ -29,11 +31,11 @@ func NewWhatsAppHandler(s usecase.WhatsAppService, noti notificationrepo.Notific
 func (h *WhatsAppHandler) GetStatus(c *gin.Context) {
 	status, err := h.s.GetStatus()
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "success", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "success", gin.H{
 		"status": status,
 	})
 }
@@ -41,7 +43,7 @@ func (h *WhatsAppHandler) GetStatus(c *gin.Context) {
 func (h *WhatsAppHandler) GetQR(c *gin.Context) {
 	qr, err := h.s.GetQR()
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -50,33 +52,37 @@ func (h *WhatsAppHandler) GetQR(c *gin.Context) {
 
 func (h *WhatsAppHandler) Logout(c *gin.Context) {
 	if err := h.s.LogoutSession(); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 	if h.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "LOGOUT_WHATSAPP_SESSION", "whatsapp", 0, nil, map[string]interface{}{"status": "logged_out"}, ipAddress, userAgent)
 	}
-	utils.SuccessResponse(c, http.StatusOK, "WhatsApp berhasil logout", nil)
+	helper.SuccessResponse(c, http.StatusOK, "WhatsApp berhasil logout", nil)
 }
 
 func (h *WhatsAppHandler) Restart(c *gin.Context) {
-	if err := h.s.StopSession(); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
-		return
-	}
+	_ = h.s.StopSession()
+
+	// Berikan jeda waktu agar WAHA menyelesaikan proses shutdown sesi secara asinkron
+	time.Sleep(1500 * time.Millisecond)
+
 	if err := h.s.StartSession(); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
-		return
+		// Jika sesi ternyata sudah berjalan, kita tidak perlu mengembalikan error
+		if !strings.Contains(strings.ToLower(err.Error()), "already started") {
+			helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	go h.s.RegisterWebhook()
 
 	if h.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "RESTART_WHATSAPP_SESSION", "whatsapp", 0, nil, map[string]interface{}{"status": "restarting"}, ipAddress, userAgent)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "WhatsApp session sedang direstart", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "WhatsApp session sedang direstart", gin.H{
 		"status": "STARTING",
 	})
 }
@@ -84,11 +90,11 @@ func (h *WhatsAppHandler) Restart(c *gin.Context) {
 func (h *WhatsAppHandler) GetStats(c *gin.Context) {
 	stats, err := h.noti.GetStats(c.Request.Context())
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "success", stats)
+	helper.SuccessResponse(c, http.StatusOK, "success", stats)
 }
 
 func (h *WhatsAppHandler) GetLogs(c *gin.Context) {
@@ -100,11 +106,11 @@ func (h *WhatsAppHandler) GetLogs(c *gin.Context) {
 
 	list, total, err := h.noti.GetDetailedLogs(c.Request.Context(), page, limit, status, search, channel)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "success", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "success", gin.H{
 		"data":  list,
 		"total": total,
 	})
@@ -113,17 +119,17 @@ func (h *WhatsAppHandler) GetLogs(c *gin.Context) {
 func (h *WhatsAppHandler) GetChatHistory(c *gin.Context) {
 	phone := c.Param("phone")
 	if phone == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "phone parameter is required")
+		helper.ErrorResponse(c, http.StatusBadRequest, "phone parameter is required")
 		return
 	}
 
 	data, err := h.s.GetChatHistory(phone)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "success", data)
+	helper.SuccessResponse(c, http.StatusOK, "success", data)
 }
 
 func (h *WhatsAppHandler) SendChatMessage(c *gin.Context) {
@@ -133,39 +139,39 @@ func (h *WhatsAppHandler) SendChatMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := h.s.SendChatMessage(phone, req.Message); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 	if h.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "SEND_WHATSAPP_CHAT", "notifications", 0, nil, map[string]interface{}{"phone": phone}, ipAddress, userAgent)
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "message sent", nil)
+	helper.SuccessResponse(c, http.StatusOK, "message sent", nil)
 }
 
 func (h *WhatsAppHandler) ResendSpecificNotification(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 
 	noti, err := h.noti.FindByID(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusNotFound, err)
+		helper.ErrorResponseRaw(c, http.StatusNotFound, err)
 		return
 	}
 
 	var user userauthdomain.User
 	if err := h.db.NewSelect().Model(&user).Where("id = ?", noti.UserID).Scan(c.Request.Context()); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -221,7 +227,7 @@ func (h *WhatsAppHandler) ResendSpecificNotification(c *gin.Context) {
 
 	_, _ = h.db.NewUpdate().Model(noti).Column("channel", "delivery_status", "delivery_error", "whatsapp_id", "updated_at").WherePK().Exec(c.Request.Context())
 	if h.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(c.Request.Context())
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(c.Request.Context())
 		_ = h.audit.Log(c.Request.Context(), h.db, userID, userName, role, "RESEND_NOTIFICATION", "notifications", noti.ID, nil, map[string]interface{}{"status": noti.DeliveryStatus, "user_id": noti.UserID, "error": func() string {
 			if noti.DeliveryError != nil {
 				return *noti.DeliveryError
@@ -231,9 +237,9 @@ func (h *WhatsAppHandler) ResendSpecificNotification(c *gin.Context) {
 	}
 
 	if sendErr != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, sendErr)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, sendErr)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "Notifikasi berhasil dikirim ulang", noti)
+	helper.SuccessResponse(c, http.StatusOK, "Notifikasi berhasil dikirim ulang", noti)
 }

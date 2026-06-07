@@ -49,42 +49,42 @@ const formatDate = (dateString) => {
   <div class="flex-1 overflow-x-auto custom-scrollbar">
     <table class="w-full text-left border-collapse">
       <thead>
-        <tr class="bg-slate-50/50 border-b border-slate-100">
-          <th class="w-[50px] px-4 py-4">
+        <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <th class="w-12 py-3 px-4 text-center">
             <div @click="emit('toggle-select-all', !(students.length > 0 && selectedIds.length === students.length))" 
-              class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all"
+              class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
               :class="students.length > 0 && selectedIds.length === students.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'">
               <CheckIcon v-if="students.length > 0 && selectedIds.length === students.length" class="w-2.5 h-2.5 text-white" />
             </div>
           </th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Siswa</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">NIS</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">NISN</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Kelas & Jurusan</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Status</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Tanggal Dibuat</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Orang Tua</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right px-10">Aksi</th>
+          <th class="py-3 px-4">Siswa</th>
+          <th class="py-3 px-4">NIS</th>
+          <th class="py-3 px-4">NISN</th>
+          <th class="py-3 px-4">Kelas & Jurusan</th>
+          <th class="py-3 px-4">Status</th>
+          <th class="py-3 px-4">Tanggal Dibuat</th>
+          <th class="py-3 px-4">Orang Tua</th>
+          <th class="py-3 px-4 text-center w-[200px]">Aksi</th>
         </tr>
       </thead>
       <tbody :class="{'opacity-50 pointer-events-none': loading}">
-        <tr v-for="s in students" :key="s.id" class="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0" 
+        <tr v-for="s in students" :key="s.id" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600" 
           :class="{'bg-indigo-50/30': selectedIds.includes(s.id)}">
-          <td class="px-4 py-4">
+          <td class="py-3 px-4 text-center">
             <div @click="emit('toggle-select-user', s.id)" 
-              class="w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all"
+              class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
               :class="selectedIds.includes(s.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-400'">
               <CheckIcon v-if="selectedIds.includes(s.id)" class="w-2.5 h-2.5 text-white" />
             </div>
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div @click="emit('view-details', s.id)" class="flex items-center gap-3 cursor-pointer group/name">
-              <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500 font-bold border border-slate-200/60 text-xs overflow-hidden shrink-0 shadow-sm group-hover/name:border-indigo-200 group-hover/name:shadow-md transition-all">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500 font-bold border border-slate-200/60 text-xs overflow-hidden shrink-0 shadow-sm">
                 <img v-if="s.image_path" :src="`${staticBase}/${s.image_path}`" class="w-full h-full object-cover" />
                 <span v-else>{{ s.name.charAt(0) }}</span>
               </div>
               <div>
-                <div class="font-bold text-slate-500 text-xs uppercase tracking-wider truncate flex items-center gap-2 group-hover/name:text-indigo-600 transition-colors">{{ s.name }}</div>
+                <div class="font-black text-slate-800 text-xs uppercase tracking-wider truncate max-w-[150px] group-hover/name:text-indigo-600 transition-colors">{{ s.name }}</div>
                 <div class="flex items-center gap-2 mt-0.5">
                   <div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{{ (s.gender === 'L' || s.gender === 'Male' || s.gender === 'Laki-laki') ? 'Laki-laki' : 'Perempuan' }}</div>
                   <div class="w-1 h-1 bg-slate-200 rounded-full"></div>
@@ -93,30 +93,37 @@ const formatDate = (dateString) => {
               </div>
             </div>
           </td>
-          <td class="px-4 py-4">
-            <div class="flex items-center gap-2 text-xs font-medium text-slate-600">{{ s.nis || '-' }}</div>
+          <td class="py-3 px-4">
+            <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono font-bold">{{ s.nis || '-' }}</span>
           </td>
-          <td class="px-4 py-4">
-            <div class="flex items-center gap-2 text-xs font-medium text-slate-600">{{ s.nisn || '-' }}</div>
+          <td class="py-3 px-4">
+            <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono font-bold">{{ s.nisn || '-' }}</span>
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div class="flex flex-col text-left min-w-[120px]">
-              <span class="text-xs font-medium text-slate-600 uppercase tracking-wider">{{ s.class_name || '-' }}</span>
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">{{ s.class_name || '-' }}</span>
               <span class="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{{ s.major_name || '-' }}</span>
             </div>
           </td>
-           <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div class="flex items-center">
-              <div v-if="!showHistory" class="text-xs font-medium text-slate-600 capitalize">
-                {{ s.status === 'active' ? 'Aktif' : (s.status === 'graduated' ? 'Lulus' : 'Non-Aktif') }}
+              <div v-if="!showHistory">
+                <span :class="[
+                  'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider',
+                  s.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' :
+                  s.status === 'graduated' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200/50' :
+                  'bg-amber-50 text-amber-700 border border-amber-200/50'
+                ]">
+                  {{ s.status === 'active' ? 'Aktif' : (s.status === 'graduated' ? 'Lulus' : 'Non-Aktif') }}
+                </span>
               </div>
               <span v-else class="text-[10px] font-bold text-rose-500 uppercase tracking-widest">Dihapus</span>
             </div>
           </td>
-          <td class="px-4 py-4 text-xs font-medium text-slate-600">
+          <td class="py-3 px-4 text-slate-500 text-[11px]">
             {{ formatDate(s.created_at) }}
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div class="flex items-center gap-1.5 relative">
               <button 
                 @click="s.parent_id ? emit('go-to-parent', s.parent_id) : emit('view-parents', s)" 
@@ -129,19 +136,19 @@ const formatDate = (dateString) => {
               <span class="text-xs font-bold text-slate-700">{{ s.parent_id ? 1 : 0 }}</span>
             </div>
           </td>
-          <td class="px-4 py-4 text-right">
-            <div class="flex items-center justify-end gap-1 px-4">
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center gap-1.5 flex-nowrap">
               <template v-if="!showHistory">
-                <button @click="emit('edit', s)" class="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all" title="Ubah">
-                  <EditIcon class="w-4 h-4" />
+                <button @click="emit('edit', s)" title="Ubah" class="p-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <EditIcon class="w-3.5 h-3.5 text-slate-500" />
                 </button>
-                <button @click="emit('delete', s)" class="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all" title="Hapus">
-                  <TrashIcon class="w-4 h-4" />
+                <button @click="emit('delete', s)" title="Hapus" class="p-2 bg-white text-rose-600 border border-slate-200 hover:bg-rose-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <TrashIcon class="w-3.5 h-3.5 text-rose-500" />
                 </button>
               </template>
               <template v-else>
-                <button @click="emit('restore', s)" class="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all" title="Pulihkan">
-                  <RestoreIcon class="w-4 h-4" />
+                <button @click="emit('restore', s)" title="Pulihkan" class="p-2 bg-white text-emerald-600 border border-slate-200 hover:bg-emerald-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <RestoreIcon class="w-3.5 h-3.5 text-emerald-600" />
                 </button>
               </template>
             </div>

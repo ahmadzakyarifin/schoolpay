@@ -7,13 +7,6 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6"`
 }
 
-type UserInfo struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
-}
-
 type LoginResponse struct {
 	AccessToken        string    `json:"access_token"`
 	RefreshToken       string    `json:"-"`
@@ -21,6 +14,11 @@ type LoginResponse struct {
 	User               UserInfo  `json:"user"`
 }
 
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"-"`
+type UserInfo struct {
+	ID    uint   `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
 }
+
+

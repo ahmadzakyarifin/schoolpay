@@ -290,6 +290,7 @@ const headerSubtitle = computed(() => authStore.user?.role === 'parent' ? 'Porta
 
 let waInterval = null
 let ws = null
+let lastSupportToastAt = 0
 
 const openDropdowns = ref({
   'Data Master': false,
@@ -512,6 +513,10 @@ const handleOfflineSynced = async (event) => {
   }
 }
 
+const handleRateLimitError = (event) => {
+  toast.warning('Tunggu sebentar', event.detail?.message || 'Terlalu banyak request. Coba lagi sebentar lagi.')
+}
+
 const initWebSocket = () => {
   if (!['admin', 'parent'].includes(authStore.user?.role)) return
 
@@ -564,7 +569,12 @@ const initWebSocket = () => {
         window.dispatchEvent(new CustomEvent('notification-status-changed', { detail: msg.data }))
       } else if (msg.topic === 'SUPPORT_CHAT_UPDATED') {
         if (authStore.user?.role === 'admin') {
-          toast.info('Chat CS baru', msg.data.phone ? `Pesan dari ${msg.data.phone}` : 'Ada pembaruan chat CS')
+          const now = Date.now()
+          const isSupportPage = route.path === '/support/chat'
+          if (!isSupportPage && now - lastSupportToastAt > 8000) {
+            toast.info('Chat CS baru', msg.data.phone ? `Pesan dari ${msg.data.phone}` : 'Ada pembaruan chat CS')
+            lastSupportToastAt = now
+          }
         }
         window.dispatchEvent(new CustomEvent('support-chat-updated', { detail: msg.data }))
       }
@@ -601,6 +611,7 @@ onMounted(() => {
   refreshOfflinePendingCount()
   window.addEventListener('offline-sync-queued', handleOfflineQueued)
   window.addEventListener('offline-sync-complete', handleOfflineSynced)
+  window.addEventListener('rate-limit-error', handleRateLimitError)
   fetchWAStatus()
   initWebSocket()
   if (authStore.user?.role === 'admin') {
@@ -621,6 +632,7 @@ watch(() => route.path, () => {
 onUnmounted(() => {
   window.removeEventListener('offline-sync-queued', handleOfflineQueued)
   window.removeEventListener('offline-sync-complete', handleOfflineSynced)
+  window.removeEventListener('rate-limit-error', handleRateLimitError)
   if (waInterval) clearInterval(waInterval)
   if (qrCodeUrl.value) URL.revokeObjectURL(qrCodeUrl.value)
   if (ws) ws.close()

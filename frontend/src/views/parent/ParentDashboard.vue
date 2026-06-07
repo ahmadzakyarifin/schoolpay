@@ -1,9 +1,8 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
+import { ref, onMounted, computed, watch, reactive } from 'vue'
 import axios from 'axios'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/auth'
-import supportService from '../../services/support.service'
 import { 
   User as UserIcon, 
   CreditCard as BillIcon, 
@@ -46,23 +45,6 @@ const limit = ref(10)
 const isMounted = ref(false)
 const notification = reactive({ show: false, message: '', type: 'success' })
 let notificationTimer
-
-const supportOpen = ref(false)
-const supportConversation = ref(null)
-const supportMessages = ref([])
-const supportDraft = ref('')
-const supportTopic = ref('tagihan')
-const supportLoading = ref(false)
-const supportSending = ref(false)
-const supportUnread = ref(0)
-
-const supportTopics = [
-  { value: 'tagihan', label: 'Tagihan' },
-  { value: 'pembayaran', label: 'Pembayaran' },
-  { value: 'akun', label: 'Akun' },
-  { value: 'teknis', label: 'Teknis' },
-  { value: 'lainnya', label: 'Lainnya' }
-]
 
 const showNotification = (message, type = 'success') => {
   clearTimeout(notificationTimer)
@@ -145,66 +127,19 @@ const fetchPaymentHistory = async () => {
   }
 }
 
-const fetchParentSupport = async (silent = false) => {
-  if (!silent) supportLoading.value = true
-  try {
-    const [convRes, msgRes] = await Promise.all([
-      supportService.getParentConversation(),
-      supportService.getParentMessages()
-    ])
-    supportConversation.value = convRes.data.data || null
-    supportMessages.value = msgRes.data.data || []
-  } catch (err) {
-    if (!silent) showNotification(err.response?.data?.message || 'Gagal memuat chat CS', 'error')
-  } finally {
-    supportLoading.value = false
-  }
-}
-
-const openSupportPanel = async () => {
-  supportOpen.value = true
-  supportUnread.value = 0
-  await fetchParentSupport()
-}
-
-const sendSupportMessage = async () => {
-  const text = supportDraft.value.trim()
-  if (!text) {
-    showNotification('Tulis pesan singkat sebelum menghubungi CS Admin.', 'warning')
-    return
-  }
-  supportSending.value = true
-  try {
-    await supportService.sendParentMessage({
-      topic: supportTopic.value,
-      message: text
-    })
-    supportDraft.value = ''
-    supportOpen.value = true
-    supportUnread.value = 0
-    await fetchParentSupport()
-    showNotification('Pesan berhasil masuk ke CS Admin.')
-  } catch (err) {
-    showNotification(err.response?.data?.message || 'Gagal mengirim pesan CS', 'error')
-  } finally {
-    supportSending.value = false
-  }
-}
-
-const handleSupportUpdate = async (event) => {
-  const changedID = Number(event.detail?.conversation_id || 0)
-  if (changedID && supportConversation.value?.id && changedID !== supportConversation.value.id) return
-
-  const before = supportMessages.value.length
-  await fetchParentSupport(true)
-  const after = supportMessages.value.length
-  if (!supportOpen.value && after > before) {
-    supportUnread.value += after - before
-  }
-}
-
-const handleOpenParentSupport = () => {
-  openSupportPanel()
+const contactWhatsApp = () => {
+  const schoolWhatsApp = import.meta.env.VITE_SCHOOL_WHATSAPP || '6283120309758'
+  const studentName = selectedStudent.value ? selectedStudent.value.name : ''
+  const parentName = authStore.user?.name || ''
+  
+  let msg = 'Halo Admin, saya orang tua'
+  if (parentName) msg += ` atas nama ${parentName}`
+  if (studentName) msg += `, wali dari siswa ${studentName}`
+  msg += '. Saya butuh bantuan/CS terkait layanan SchoolPay.'
+  
+  const text = encodeURIComponent(msg)
+  const url = `https://wa.me/${schoolWhatsApp}?text=${text}`
+  window.open(url, '_blank')
 }
 
 const selectStudent = async (student) => {
@@ -635,14 +570,6 @@ const formatPeriod = (bill) => {
 onMounted(() => {
   isMounted.value = true
   fetchParentData()
-  fetchParentSupport(true)
-  window.addEventListener('support-chat-updated', handleSupportUpdate)
-  window.addEventListener('open-parent-support', handleOpenParentSupport)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('support-chat-updated', handleSupportUpdate)
-  window.removeEventListener('open-parent-support', handleOpenParentSupport)
 })
 
 </script>
@@ -1051,105 +978,12 @@ onUnmounted(() => {
 
     <Teleport to="body">
       <button
-        @click="openSupportPanel"
-        class="fixed bottom-6 right-6 z-[2200] w-14 h-14 rounded-2xl bg-indigo-600 text-white shadow-2xl shadow-indigo-300/60 flex items-center justify-center hover:bg-indigo-700 transition-all"
-        title="CS Admin"
+        @click="contactWhatsApp"
+        class="fixed bottom-6 right-6 z-[2200] w-14 h-14 rounded-2xl bg-emerald-500 text-white shadow-2xl shadow-emerald-300/60 flex items-center justify-center hover:bg-emerald-600 transition-all hover:scale-105 active:scale-95 group hover:-translate-y-1"
+        title="Hubungi CS Admin via WhatsApp"
       >
-        <ChatIcon class="w-6 h-6" />
-        <span v-if="supportUnread > 0" class="absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
-          {{ supportUnread }}
-        </span>
+        <ChatIcon class="w-6 h-6 group-hover:rotate-12 transition-transform" />
       </button>
-
-      <transition name="dropdown">
-        <section
-          v-if="supportOpen"
-          class="fixed bottom-24 right-6 z-[2200] w-[min(420px,calc(100vw-32px))] bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
-        >
-          <header class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <ChatIcon class="w-5 h-5" />
-              </div>
-              <div>
-                <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">CS Admin</h3>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{{ supportConversation?.status || 'Belum ada tiket' }}</p>
-              </div>
-            </div>
-            <button @click="supportOpen = false" class="w-9 h-9 rounded-xl bg-white border border-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center">
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </header>
-
-          <div class="h-80 overflow-y-auto bg-slate-50/60 p-4 space-y-3 custom-scrollbar">
-            <div v-if="supportLoading" class="h-full flex items-center justify-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              Memuat chat...
-            </div>
-            <div v-else-if="supportMessages.length === 0" class="h-full flex items-center justify-center text-center p-6">
-              <div>
-                <ChatIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                <p class="text-xs font-black text-slate-700 uppercase tracking-wider">Belum ada pesan CS</p>
-                <p class="text-[10px] font-bold text-slate-400 mt-1">Pilih topik, lalu kirim pertanyaan singkat ke admin.</p>
-              </div>
-            </div>
-            <div
-              v-for="msg in supportMessages"
-              :key="msg.id"
-              :class="['flex', msg.sender_type === 'parent' ? 'justify-end' : 'justify-start']"
-            >
-              <div
-                :class="[
-                  'max-w-[82%] rounded-2xl px-4 py-3 text-xs font-semibold shadow-sm whitespace-pre-wrap leading-relaxed',
-                  msg.sender_type === 'parent'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-white border border-slate-100 text-slate-700'
-                ]"
-              >
-                <p>{{ msg.message }}</p>
-                <p :class="['text-[9px] uppercase tracking-widest mt-2', msg.sender_type === 'parent' ? 'text-indigo-100' : 'text-slate-400']">
-                  {{ msg.sender_type === 'parent' ? 'Anda' : 'Admin' }} • {{ msg.delivery_status }}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <footer class="p-4 border-t border-slate-100 bg-white space-y-3">
-            <div class="grid grid-cols-5 gap-1.5">
-              <button
-                v-for="topic in supportTopics"
-                :key="topic.value"
-                @click="supportTopic = topic.value"
-                :class="[
-                  'px-2 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border transition-all',
-                  supportTopic === topic.value
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                ]"
-              >
-                {{ topic.label }}
-              </button>
-            </div>
-            <textarea
-              v-model="supportDraft"
-              maxlength="500"
-              rows="3"
-              class="w-full resize-none bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all"
-              placeholder="Tulis pertanyaan singkat..."
-            ></textarea>
-            <div class="flex items-center justify-between gap-3">
-              <span class="text-[10px] font-bold text-slate-400">{{ supportDraft.length }}/500</span>
-              <button
-                @click="sendSupportMessage"
-                :disabled="supportSending || !supportDraft.trim()"
-                class="px-4 py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50"
-              >
-                <SendIcon class="w-4 h-4" />
-                {{ supportSending ? 'Mengirim' : 'Kirim' }}
-              </button>
-            </div>
-          </footer>
-        </section>
-      </transition>
     </Teleport>
   </div>
 </template>

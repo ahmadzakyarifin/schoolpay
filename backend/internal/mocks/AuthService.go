@@ -17,17 +17,17 @@ type AuthService struct {
 	mock.Mock
 }
 
-// ChangePassword provides a mock function with given fields: ctx, userID, currentPassword, newPassword
-func (_m *AuthService) ChangePassword(ctx context.Context, userID uint, currentPassword string, newPassword string) error {
-	ret := _m.Called(ctx, userID, currentPassword, newPassword)
+// ChangePassword provides a mock function with given fields: ctx, userID, currentPassword, newPassword, audit
+func (_m *AuthService) ChangePassword(ctx context.Context, userID uint, currentPassword string, newPassword string, audit dto.AuditMeta) error {
+	ret := _m.Called(ctx, userID, currentPassword, newPassword, audit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ChangePassword")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint, string, string) error); ok {
-		r0 = rf(ctx, userID, currentPassword, newPassword)
+	if rf, ok := ret.Get(0).(func(context.Context, uint, string, string, dto.AuditMeta) error); ok {
+		r0 = rf(ctx, userID, currentPassword, newPassword, audit)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -35,17 +35,17 @@ func (_m *AuthService) ChangePassword(ctx context.Context, userID uint, currentP
 	return r0
 }
 
-// ForgotPassword provides a mock function with given fields: ctx, req, cfg
-func (_m *AuthService) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, cfg *config.Config) error {
-	ret := _m.Called(ctx, req, cfg)
+// ForgotPassword provides a mock function with given fields: ctx, req, audit, cfg
+func (_m *AuthService) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest, audit dto.AuditMeta, cfg *config.Config) error {
+	ret := _m.Called(ctx, req, audit, cfg)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ForgotPassword")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, dto.ForgotPasswordRequest, *config.Config) error); ok {
-		r0 = rf(ctx, req, cfg)
+	if rf, ok := ret.Get(0).(func(context.Context, dto.ForgotPasswordRequest, dto.AuditMeta, *config.Config) error); ok {
+		r0 = rf(ctx, req, audit, cfg)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -53,9 +53,9 @@ func (_m *AuthService) ForgotPassword(ctx context.Context, req dto.ForgotPasswor
 	return r0
 }
 
-// Login provides a mock function with given fields: ctx, req, jwtSecret
-func (_m *AuthService) Login(ctx context.Context, req dto.LoginRequest, jwtSecret string) (*dto.LoginResponse, error) {
-	ret := _m.Called(ctx, req, jwtSecret)
+// Login provides a mock function with given fields: ctx, req, audit, jwtSecret
+func (_m *AuthService) Login(ctx context.Context, req dto.LoginRequest, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
+	ret := _m.Called(ctx, req, audit, jwtSecret)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Login")
@@ -63,19 +63,19 @@ func (_m *AuthService) Login(ctx context.Context, req dto.LoginRequest, jwtSecre
 
 	var r0 *dto.LoginResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, dto.LoginRequest, string) (*dto.LoginResponse, error)); ok {
-		return rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(0).(func(context.Context, dto.LoginRequest, dto.AuditMeta, string) (*dto.LoginResponse, error)); ok {
+		return rf(ctx, req, audit, jwtSecret)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, dto.LoginRequest, string) *dto.LoginResponse); ok {
-		r0 = rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(0).(func(context.Context, dto.LoginRequest, dto.AuditMeta, string) *dto.LoginResponse); ok {
+		r0 = rf(ctx, req, audit, jwtSecret)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*dto.LoginResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, dto.LoginRequest, string) error); ok {
-		r1 = rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(1).(func(context.Context, dto.LoginRequest, dto.AuditMeta, string) error); ok {
+		r1 = rf(ctx, req, audit, jwtSecret)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -101,9 +101,9 @@ func (_m *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return r0
 }
 
-// RefreshToken provides a mock function with given fields: ctx, req, jwtSecret
-func (_m *AuthService) RefreshToken(ctx context.Context, req dto.RefreshTokenRequest, jwtSecret string) (*dto.LoginResponse, error) {
-	ret := _m.Called(ctx, req, jwtSecret)
+// RefreshToken provides a mock function with given fields: ctx, refreshToken, audit, jwtSecret
+func (_m *AuthService) RefreshToken(ctx context.Context, refreshToken string, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
+	ret := _m.Called(ctx, refreshToken, audit, jwtSecret)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RefreshToken")
@@ -111,19 +111,19 @@ func (_m *AuthService) RefreshToken(ctx context.Context, req dto.RefreshTokenReq
 
 	var r0 *dto.LoginResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, dto.RefreshTokenRequest, string) (*dto.LoginResponse, error)); ok {
-		return rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(0).(func(context.Context, string, dto.AuditMeta, string) (*dto.LoginResponse, error)); ok {
+		return rf(ctx, refreshToken, audit, jwtSecret)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, dto.RefreshTokenRequest, string) *dto.LoginResponse); ok {
-		r0 = rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(0).(func(context.Context, string, dto.AuditMeta, string) *dto.LoginResponse); ok {
+		r0 = rf(ctx, refreshToken, audit, jwtSecret)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*dto.LoginResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, dto.RefreshTokenRequest, string) error); ok {
-		r1 = rf(ctx, req, jwtSecret)
+	if rf, ok := ret.Get(1).(func(context.Context, string, dto.AuditMeta, string) error); ok {
+		r1 = rf(ctx, refreshToken, audit, jwtSecret)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -131,17 +131,17 @@ func (_m *AuthService) RefreshToken(ctx context.Context, req dto.RefreshTokenReq
 	return r0, r1
 }
 
-// ResetPassword provides a mock function with given fields: ctx, req
-func (_m *AuthService) ResetPassword(ctx context.Context, req dto.ResetPasswordRequest) error {
-	ret := _m.Called(ctx, req)
+// ResetPassword provides a mock function with given fields: ctx, req, audit
+func (_m *AuthService) ResetPassword(ctx context.Context, req dto.ResetPasswordRequest, audit dto.AuditMeta) error {
+	ret := _m.Called(ctx, req, audit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResetPassword")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, dto.ResetPasswordRequest) error); ok {
-		r0 = rf(ctx, req)
+	if rf, ok := ret.Get(0).(func(context.Context, dto.ResetPasswordRequest, dto.AuditMeta) error); ok {
+		r0 = rf(ctx, req, audit)
 	} else {
 		r0 = ret.Error(0)
 	}

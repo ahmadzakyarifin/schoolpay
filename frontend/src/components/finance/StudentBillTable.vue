@@ -54,42 +54,42 @@ const statusClass = (status) => {
 </script>
 
 <template>
-  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[700px]">
-    <div class="px-8 py-8 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
-      <div class="flex items-center gap-4">
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[700px]">
+    <div class="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+      <div class="flex items-center gap-2 font-black text-slate-700 text-xs uppercase tracking-widest">
         <div class="w-2 h-6 bg-indigo-500 rounded-full"></div>
-        <h3 class="font-black text-slate-700 text-sm uppercase tracking-[0.2em]">Daftar Tagihan Siswa</h3>
+        <span>Daftar Tagihan Siswa</span>
       </div>
     </div>
 
     <div class="flex-1 overflow-x-auto">
-      <table class="w-full text-left border-collapse table-fixed">
+      <table class="w-full text-left border-collapse">
         <thead>
-          <tr class="bg-slate-50/50 border-b border-slate-100">
-            <th class="w-[45%] px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Siswa</th>
-            <th class="w-[30%] px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Status</th>
-            <th class="w-[25%] px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-8">Detail</th>
+          <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            <th class="w-[45%] py-3 px-4">Siswa</th>
+            <th class="w-[30%] py-3 px-4">Status</th>
+            <th class="w-[25%] py-3 px-4 text-center">Detail</th>
           </tr>
         </thead>
         <tbody :class="{'opacity-50 pointer-events-none': loading}">
           <tr v-for="b in bills" :key="b.id" @click="$emit('select-student', b)"
-            class="group hover:bg-indigo-50/30 cursor-pointer transition-all border-b border-slate-50 last:border-0"
+            class="border-b border-slate-100 hover:bg-slate-50/30 cursor-pointer transition-all text-xs font-semibold text-slate-600"
             :class="selectedStudent?.student_id === b.student_id ? 'bg-indigo-50/50 ring-1 ring-inset ring-indigo-100' : ''">
-            <td class="px-6 py-5 text-left">
-              <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-400 shadow-sm group-hover:border-indigo-200 transition-colors">
-                  <StudentIcon class="w-6 h-6" />
+            <td class="py-3 px-4">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-400 shadow-sm group-hover:border-indigo-200 transition-colors shrink-0">
+                  <StudentIcon class="w-4 h-4" />
                 </div>
                 <div class="flex flex-col truncate">
-                  <span class="font-bold text-slate-500 text-xs uppercase tracking-wider truncate group-hover:text-indigo-600">{{ b.student_name }}</span>
+                  <span class="font-black text-slate-800 text-xs uppercase tracking-wider truncate group-hover:text-indigo-600">{{ b.student_name }}</span>
                   <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">NIS #{{ b.student_id }}</span>
                 </div>
               </div>
             </td>
-            <td class="px-6 py-5 text-left">
+            <td class="py-3 px-4">
               <div class="flex flex-col gap-1">
                 <span :class="[
-                  'inline-flex w-fit px-2.5 py-1 rounded text-[8px] font-black uppercase tracking-widest border',
+                  'inline-flex w-fit px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border',
                   statusClass(b.status)
                 ]">
                   {{ statusLabel(b.status) }}
@@ -104,9 +104,9 @@ const statusClass = (status) => {
                 </div>
               </div>
             </td>
-            <td class="px-6 py-5 text-right pr-8">
-              <div class="p-2 bg-white rounded-xl border border-slate-100 group-hover:border-indigo-200 group-hover:text-indigo-600 transition-all inline-block shadow-sm">
-                <PrevIcon class="w-4 h-4 rotate-180" />
+            <td class="py-3 px-4 text-center">
+              <div class="p-1 bg-white rounded-lg border border-slate-100 group-hover:border-indigo-200 group-hover:text-indigo-600 transition-all inline-block shadow-sm">
+                <PrevIcon class="w-3.5 h-3.5 rotate-180 text-slate-500" />
               </div>
             </td>
           </tr>
@@ -115,7 +115,7 @@ const statusClass = (status) => {
     </div>
 
     <!-- Pagination -->
-    <div class="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+    <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
       <div class="flex items-center gap-6">
         <div class="flex items-center gap-3">
           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilkan</span>
@@ -137,9 +137,9 @@ const statusClass = (status) => {
           v-if="pagination.totalPages > 1"
           @click="pagination.page > 1 && $emit('update:page', pagination.page - 1)" 
           :disabled="pagination.page <= 1" 
-          class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+          class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
         >
-          <PrevIcon class="w-4 h-4" />
+          <PrevIcon class="w-3.5 h-3.5" />
         </button>
 
         <!-- Page Numbers -->
@@ -148,7 +148,7 @@ const statusClass = (status) => {
             v-for="p in visiblePages" 
             :key="p"
             @click="$emit('update:page', p)"
-            class="w-10 h-10 flex items-center justify-center rounded-xl text-[10px] font-black transition-all cursor-pointer"
+            class="w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-black transition-all cursor-pointer"
             :class="p === pagination.page 
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
               : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'"
@@ -161,9 +161,9 @@ const statusClass = (status) => {
           v-if="pagination.totalPages > 1"
           @click="pagination.page < pagination.totalPages && $emit('update:page', pagination.page + 1)" 
           :disabled="pagination.page >= pagination.totalPages" 
-          class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+          class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
         >
-          <PrevIcon class="w-4 h-4 rotate-180" />
+          <PrevIcon class="w-3.5 h-3.5 rotate-180" />
         </button>
       </div>
     </div>

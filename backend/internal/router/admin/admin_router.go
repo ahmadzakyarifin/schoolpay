@@ -23,10 +23,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
-	"github.com/hibiken/asynq"
-	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
-	"golang.org/x/time/rate"
 )
 
 func SetupAdminRoutes(
@@ -40,13 +37,11 @@ func SetupAdminRoutes(
 	sbSvc financeusecase.StudentBillService,
 	finNotifSvc notificationusecase.FinanceNotificationService,
 	auditSvc auditusecase.AuditLogService,
-	redisClient *redis.Client,
-	asynqClient *asynq.Client,
 ) {
 
 	// Repositories
 	userRepo := userauthrepo.NewUserRepo(db)
-	authRepo := userauthrepo.NewAuthRepo(db, redisClient)
+	authRepo := userauthrepo.NewAuthRepo(db)
 	notiRepo := notificationrepo.NewNotificationRepo(db)
 	stuRepo := academicrepo.NewStudentRepo(db)
 
@@ -60,6 +55,7 @@ func SetupAdminRoutes(
 	brRepo := financerepo.NewBillingRuleRepo(db)
 	sbRepo := financerepo.NewStudentBillRepo(db)
 	repRepo := financerepo.NewFinanceReportRepo(db)
+	dashRepo := financerepo.NewDashboardRepo(db)
 
 	// Shared Services
 	waSvc := notificationusecase.NewWhatsAppService()
@@ -78,6 +74,7 @@ func SetupAdminRoutes(
 	btSvc := financeusecase.NewBillTypeService(db, btRepo, auditSvc)
 	brSvc := financeusecase.NewBillingRuleService(db, brRepo, finNotifSvc, auditSvc)
 	repSvc := financeusecase.NewFinanceReportService(db, repRepo, auditSvc)
+	dashSvc := financeusecase.NewDashboardService(dashRepo, stuRepo, ayRepo, auditSvc)
 	supportSvc := supportusecase.NewSupportService(db, supportRepo, userRepo, waSvc, auditSvc)
 
 	// Handlers
@@ -96,32 +93,33 @@ func SetupAdminRoutes(
 	payHdl := financehandler.NewPaymentHandler(paySvc)
 	repHdl := financehandler.NewFinanceReportHandler(repSvc)
 
-	dashHdl := financehandler.NewDashboardHandler(db, userRepo, stuRepo, repRepo, ayRepo, notiRepo, auditSvc)
+	dashHdl := financehandler.NewDashboardHandler(dashSvc)
 	waHdl := notificationhandler.NewWhatsAppHandler(waSvc, notiRepo, msg, db, auditSvc)
 	supportHdl := supporthandler.NewSupportHandler(supportSvc, hub)
 	upHdl := academichandler.NewUploadHandler()
 
-	financeExportLimit := middleware.RateLimitMiddleware(redisClient, "finance_export", rate.Limit(10.0/60.0), 10)
+	financeExportLimit := middleware.RateLimitPerUser("finance_export", 10)
 
 	// Dashboard Stats
-	g.GET("/dashboard/stats", dashHdl.GetStats)
-	g.GET("/dashboard/communication-details", dashHdl.GetCommunicationDetails)
-	g.GET("/dashboard/export", financeExportLimit, dashHdl.ExportGlobalReport)
+	g.GET("/dashboard/stats", middleware.ValidateClassMajorRelation(db), dashHdl.GetStats)
+	g.GET("/dashboard/communication-details", middleware.ValidateClassMajorRelation(db), dashHdl.GetCommunicationDetails)
+	g.GET("/dashboard/export", financeExportLimit, middleware.ValidateClassMajorRelation(db), dashHdl.ExportGlobalReport)
 
 	// Password & Profile
 	// Change password dipindahkan ke auth_router.go agar bisa diakses parent juga
 
-	notificationWriteLimit := middleware.RateLimitMiddleware(redisClient, "notification_write", rate.Limit(10.0/60.0), 10)
-	whatsappChatLimit := middleware.RateLimitMiddleware(redisClient, "whatsapp_chat", rate.Limit(20.0/60.0), 20)
-	supportWriteLimit := middleware.RateLimitMiddleware(redisClient, "support_write", rate.Limit(20.0/60.0), 20)
-	masterWriteLimit := middleware.RateLimitMiddleware(redisClient, "master_write", rate.Limit(60.0/60.0), 60)
-	financeWriteLimit := middleware.RateLimitMiddleware(redisClient, "finance_write", rate.Limit(30.0/60.0), 30)
-	financePaymentLimit := middleware.RateLimitMiddleware(redisClient, "finance_payment_admin", rate.Limit(10.0/60.0), 10)
+	userActivationLimit := middleware.RateLimitAuthSaringan("user_activation", "ip", 10)
+	notificationWriteLimit := middleware.RateLimitPerUser("notification_write", 10)
+	whatsappChatLimit := middleware.RateLimitPerUser("whatsapp_chat", 20)
+	supportWriteLimit := middleware.RateLimitPerUser("support_write", 20)
+	masterWriteLimit := middleware.RateLimitPerUser("master_write", 60)
+	financeWriteLimit := middleware.RateLimitPerUser("finance_write", 30)
+	financePaymentLimit := middleware.RateLimitPerUser("finance_payment_admin", 10)
 
 	// User Management
 
 	// Public user routes
-	publicAPI.POST("/users/activate", userHdl.Activate)
+	publicAPI.POST("/users/activate", userActivationLimit, userHdl.Activate)
 
 	users := g.Group("/users")
 	{
@@ -150,9 +148,9 @@ func SetupAdminRoutes(
 	students := g.Group("/students")
 	{
 		// Static Routes
-		students.GET("", stuHdl.GetAll)
+		students.GET("", middleware.ValidateClassMajorRelation(db), stuHdl.GetAll)
 		students.GET("/check-unique", stuHdl.CheckUnique)
-		students.GET("/export", stuHdl.Export)
+		students.GET("/export", middleware.ValidateClassMajorRelation(db), stuHdl.Export)
 		students.GET("/filters", stuHdl.GetFilters)
 		students.POST("", masterWriteLimit, stuHdl.Create)
 		students.POST("/bulk-graduate", masterWriteLimit, stuHdl.BulkGraduate)
@@ -252,8 +250,8 @@ func SetupAdminRoutes(
 
 		finance.GET("/payments", payHdl.GetHistory)
 
-		finance.GET("/arrears", repHdl.GetArrears)
-		finance.GET("/export-trend", financeExportLimit, repHdl.ExportTrend)
+		finance.GET("/arrears", middleware.ValidateClassMajorRelation(db), repHdl.GetArrears)
+		finance.GET("/export-trend", financeExportLimit, middleware.ValidateClassMajorRelation(db), repHdl.ExportTrend)
 	}
 
 	// WhatsApp Management
@@ -270,10 +268,9 @@ func SetupAdminRoutes(
 	support := g.Group("/support")
 	{
 		support.GET("/conversations", supportHdl.List)
-		support.GET("/conversations/:id/messages", supportHdl.Messages)
-		support.POST("/conversations/:id/reply", supportWriteLimit, supportHdl.Reply)
 		support.PATCH("/conversations/:id/assign", supportWriteLimit, supportHdl.Assign)
 		support.PATCH("/conversations/:id/close", supportWriteLimit, supportHdl.Close)
+		support.PATCH("/conversations/:id/status", supportWriteLimit, supportHdl.UpdateStatus)
 	}
 
 	// Audit Log Management

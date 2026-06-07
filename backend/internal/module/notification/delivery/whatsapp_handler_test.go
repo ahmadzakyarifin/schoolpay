@@ -1,7 +1,6 @@
 package delivery
 
 import (
-	"reflect"
 	"testing"
 
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
@@ -27,7 +26,8 @@ func TestNewWhatsAppHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewWhatsAppHandler(tt.args.s, tt.args.noti, tt.args.msg, tt.args.db, nil); !reflect.DeepEqual(got, tt.want) {
+			got := NewWhatsAppHandler(tt.args.s, tt.args.noti, tt.args.msg, tt.args.db, nil)
+			if got.s != tt.want.s || got.noti != tt.want.noti || got.msg != tt.want.msg || got.db != tt.want.db || got.audit != tt.want.audit {
 				t.Errorf("NewWhatsAppHandler() = %v, want %v", got, tt.want)
 			}
 		})

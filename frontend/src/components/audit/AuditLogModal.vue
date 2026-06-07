@@ -61,6 +61,11 @@
                     <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block">📍 WHERE (Lokasi & Akses)</span>
                     <p class="font-bold text-slate-800 text-sm">{{ log?.ip_address }}</p>
                     <p class="text-[11px] text-slate-400 truncate" :title="log?.user_agent">Modul: <span class="text-indigo-600 font-medium">{{ humanizeEntity(log?.entity_type) }}</span> • Perangkat: {{ log?.user_agent || 'Sistem Internal / API' }}</p>
+                    <div class="mt-2 flex flex-wrap gap-2 text-[10px] font-bold">
+                      <span v-if="log?.device_id" class="px-2 py-0.5 bg-slate-100 rounded text-slate-500 border border-slate-200">Device ID: {{ log.device_id }}</span>
+                      <span v-if="log?.app_platform" class="px-2 py-0.5 bg-indigo-50 rounded text-indigo-600 border border-indigo-100">Platform: {{ log.app_platform }}</span>
+                      <span v-if="log?.app_version" class="px-2 py-0.5 bg-emerald-50 rounded text-emerald-600 border border-emerald-100">Version: {{ log.app_version }}</span>
+                    </div>
                   </div>
 
                   <!-- WHAT -->

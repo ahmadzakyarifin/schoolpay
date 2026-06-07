@@ -59,41 +59,41 @@ const formatDate = (dateString) => {
 
 <template>
   <div class="flex-1 overflow-x-auto">
-    <table class="w-full text-left border-collapse table-fixed">
+    <table class="w-full text-left border-collapse">
       <thead>
-        <tr class="bg-slate-50/50 border-b border-slate-100">
-          <th class="w-[50px] px-4 py-4 text-center">
+        <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+          <th class="w-12 py-3 px-4 text-center">
             <div @click="toggleAll" class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
               :class="isAllSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'">
               <CheckIcon v-if="isAllSelected" class="w-2.5 h-2.5 text-white" />
             </div>
           </th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Kode</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Nama Jurusan</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Kelas</th>
-          <th v-if="!showHistory" class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Status</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">{{ showHistory ? 'Dihapus' : 'Dibuat' }}</th>
-          <th class="px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-10">Aksi</th>
+          <th class="py-3 px-4">Kode</th>
+          <th class="py-3 px-4">Nama Jurusan</th>
+          <th class="py-3 px-4">Kelas</th>
+          <th v-if="!showHistory" class="py-3 px-4">Status</th>
+          <th class="py-3 px-4">{{ showHistory ? 'Dihapus' : 'Dibuat' }}</th>
+          <th class="py-3 px-4 text-center w-[200px]">Aksi</th>
         </tr>
       </thead>
       <tbody :class="{'opacity-50 pointer-events-none': loading}">
         <tr v-for="item in list" :key="item.id" 
-          class="group hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0"
+          class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600"
           :class="{'bg-indigo-50/30': selectedIds.includes(item.id)}">
-          <td class="px-4 py-4 text-center">
+          <td class="py-3 px-4 text-center">
             <div @click="toggleOne(item.id)" 
               class="w-4 h-4 mx-auto rounded border-2 flex items-center justify-center cursor-pointer transition-all"
-              :class="selectedIds.includes(item.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 group-hover:border-indigo-300'">
+              :class="selectedIds.includes(item.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 hover:border-indigo-300'">
               <CheckIcon v-if="selectedIds.includes(item.id)" class="w-2.5 h-2.5 text-white" />
             </div>
           </td>
-          <td class="px-4 py-4">
-            <span class="text-xs font-medium text-slate-600 uppercase">{{ item.code || '-' }}</span>
+          <td class="py-3 px-4">
+            <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono font-bold">{{ item.code || '-' }}</span>
           </td>
-          <td class="px-4 py-4">
-            <div class="font-bold text-slate-500 text-xs uppercase tracking-wider truncate">{{ item.name }}</div>
+          <td class="py-3 px-4">
+            <div class="font-black text-slate-800 text-xs uppercase tracking-wider truncate max-w-[200px]">{{ item.name }}</div>
           </td>
-          <td class="px-4 py-4">
+          <td class="py-3 px-4">
             <div class="flex items-center gap-1.5 relative">
               <button @click="openClassDetail(item)" 
                 class="flex items-center justify-center w-6 h-6 rounded-lg transition-all"
@@ -104,7 +104,7 @@ const formatDate = (dateString) => {
               <span class="text-xs font-bold text-slate-700">{{ item.class_count || 0 }}</span>
             </div>
           </td>
-          <td v-if="!showHistory" class="px-4 py-4">
+          <td v-if="!showHistory" class="py-3 px-4">
             <div class="flex items-center">
               <button @click="emit('toggle-status', item)" 
                 class="relative w-8 h-4 rounded-full transition-all duration-300 focus:outline-none shadow-inner"
@@ -114,22 +114,22 @@ const formatDate = (dateString) => {
               </button>
             </div>
           </td>
-          <td class="px-4 py-4 text-left">
-            <span class="text-xs font-medium text-slate-600">{{ showHistory ? formatDate(item.deleted_at) : formatDate(item.created_at) }}</span>
+          <td class="py-3 px-4 text-left">
+            <span class="text-slate-500 text-[11px]">{{ showHistory ? formatDate(item.deleted_at) : formatDate(item.created_at) }}</span>
           </td>
-          <td class="px-4 py-4 text-right pr-10">
-            <div class="flex items-center justify-end gap-1 px-4">
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center gap-1.5 flex-nowrap">
               <template v-if="!showHistory">
-                <button @click="emit('edit', item)" class="p-2 hover:bg-amber-50 text-slate-400 hover:text-amber-600 rounded-xl transition-all" title="Ubah">
-                  <EditIcon class="w-4 h-4" />
+                <button @click="emit('edit', item)" title="Ubah" class="p-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <EditIcon class="w-3.5 h-3.5 text-slate-500" />
                 </button>
-                <button @click="emit('delete', item)" class="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all" title="Hapus">
-                  <TrashIcon class="w-4 h-4" />
+                <button @click="emit('delete', item)" title="Hapus" class="p-2 bg-white text-rose-600 border border-slate-200 hover:bg-rose-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <TrashIcon class="w-3.5 h-3.5 text-rose-500" />
                 </button>
               </template>
               <template v-else>
-                <button @click="emit('restore', item)" class="p-2 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all" title="Pulihkan">
-                  <RestoreIcon class="w-4 h-4" />
+                <button @click="emit('restore', item)" title="Pulihkan" class="p-2 bg-white text-emerald-600 border border-slate-200 hover:bg-emerald-50 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                  <RestoreIcon class="w-3.5 h-3.5 text-emerald-600" />
                 </button>
               </template>
             </div>
@@ -138,7 +138,7 @@ const formatDate = (dateString) => {
 
         <!-- Empty State -->
         <tr v-if="list.length === 0 && !loading">
-          <td colspan="7" class="py-32">
+          <td colspan="7" class="py-24">
             <div class="flex flex-col items-center justify-center text-center animate-scale-in px-6">
               <div class="w-20 h-20 bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-slate-300 mb-6 border-4 border-white shadow-xl shadow-slate-200/50">
                 <MajorIcon class="w-10 h-10" />

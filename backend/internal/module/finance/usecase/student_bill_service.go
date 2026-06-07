@@ -13,6 +13,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
 	notificationusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 )
 
@@ -287,7 +288,7 @@ func (s *studentBillService) GenerateFromRule(ctx context.Context, ruleID uint, 
 						return err
 					}
 					if s.audit != nil {
-						userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+						userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 						oldVals := map[string]interface{}{"amount": oldAmount, "total_paid": oldPaid}
 						newVals := map[string]interface{}{"amount": existingBill.Amount, "total_paid": existingBill.TotalPaid, "deposit_refund": depositRefund}
 						_ = s.audit.Log(ctx, s.db, userID, userName, role, "REFUND_BILL_REDUCTION", "student_bills", existingBill.ID, oldVals, newVals, ipAddress, userAgent)
@@ -345,7 +346,7 @@ func (s *studentBillService) GenerateFromRule(ctx context.Context, ruleID uint, 
 						return err
 					}
 					if s.audit != nil {
-						userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+						userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 						newVals := map[string]interface{}{"student_id": sID, "bill_type_id": rule.BillTypeID, "amount": deficit, "academic_year": existingBill.AcademicYear, "period": periodCopy, "description": desc}
 						_ = s.audit.Log(ctx, s.db, userID, userName, role, "GENERATE_ADJUSTMENT_BILL", "student_bills", adjBill.ID, nil, newVals, ipAddress, userAgent)
 					}
@@ -378,7 +379,7 @@ func (s *studentBillService) GenerateFromRule(ctx context.Context, ruleID uint, 
 				return err
 			}
 			if s.audit != nil {
-				userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+				userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 				newVals := map[string]interface{}{"student_id": sID, "bill_type_id": rule.BillTypeID, "amount": rule.Amount, "academic_year": academicYear, "period": periodCopy, "name": billName}
 				_ = s.audit.Log(ctx, s.db, userID, userName, role, "GENERATE_BILL", "student_bills", bill.ID, nil, newVals, ipAddress, userAgent)
 			}
@@ -409,7 +410,7 @@ func (s *studentBillService) CancelGeneratedBills(ctx context.Context, ruleIDs [
 			return err
 		}
 
-		adminID, adminName, _, _, _ := utils.GetAuditMeta(ctx)
+		adminID, adminName, _, _, _ := helper.GetAuditMeta(ctx)
 		createdBy := "SYSTEM"
 		if adminName != "" {
 			createdBy = fmt.Sprintf("ADMIN-%d (%s)", adminID, adminName)
@@ -462,7 +463,7 @@ func (s *studentBillService) CancelGeneratedBills(ctx context.Context, ruleIDs [
 			}
 
 			if s.audit != nil {
-				userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+				userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 				oldVals := map[string]interface{}{"status": oldStatus, "total_paid": refundAmount}
 				newVals := map[string]interface{}{"status": "voided", "deposit_refund": refundAmount, "void_reason": voidReason}
 				_ = s.audit.Log(ctx, tx, userID, userName, role, "BULK_CANCEL_GENERATED_BILL", "student_bills", b.ID, oldVals, newVals, ipAddress, userAgent)
@@ -503,7 +504,7 @@ func (s *studentBillService) Create(ctx context.Context, sb *domain.StudentBill)
 
 	err = s.repo.Create(ctx, s.db, sb)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"student_id": sb.StudentID, "bill_type_id": sb.BillTypeID, "amount": sb.Amount, "academic_year": sb.AcademicYear, "period": period}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "CREATE", "student_bills", sb.ID, nil, newVals, ipAddress, userAgent)
 	}
@@ -607,7 +608,7 @@ func (s *studentBillService) Update(ctx context.Context, sb *domain.StudentBill)
 		}
 
 		if depositRefund > 0 {
-			adminID, adminName, _, _, _ := utils.GetAuditMeta(ctx)
+			adminID, adminName, _, _, _ := helper.GetAuditMeta(ctx)
 			createdBy := "SYSTEM"
 			if adminName != "" {
 				createdBy = fmt.Sprintf("ADMIN-%d (%s)", adminID, adminName)
@@ -634,7 +635,7 @@ func (s *studentBillService) Update(ctx context.Context, sb *domain.StudentBill)
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			newVals := map[string]interface{}{"student_id": sb.StudentID, "bill_type_id": sb.BillTypeID, "amount": sb.Amount, "total_paid": sb.TotalPaid, "status": sb.Status, "academic_year": sb.AcademicYear, "period": period, "deposit_refund": depositRefund}
 			_ = s.audit.Log(ctx, tx, userID, userName, role, "UPDATE", "student_bills", sb.ID, oldVals, newVals, ipAddress, userAgent)
 		}
@@ -653,7 +654,7 @@ func (s *studentBillService) Delete(ctx context.Context, id uint, reason ...stri
 			return nil
 		}
 
-		adminID, adminName, _, _, _ := utils.GetAuditMeta(ctx)
+		adminID, adminName, _, _, _ := helper.GetAuditMeta(ctx)
 		createdBy := "SYSTEM"
 		if adminName != "" {
 			createdBy = fmt.Sprintf("ADMIN-%d (%s)", adminID, adminName)
@@ -707,7 +708,7 @@ func (s *studentBillService) Delete(ctx context.Context, id uint, reason ...stri
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			oldVals := map[string]interface{}{"status": oldStatus, "total_paid": refundAmount}
 			newVals := map[string]interface{}{"status": "voided", "void_reason": voidReason, "deposit_refund": refundAmount}
 			_ = s.audit.Log(ctx, tx, userID, userName, role, "VOID_BILL", "student_bills", id, oldVals, newVals, ipAddress, userAgent)
@@ -857,7 +858,7 @@ func (s *studentBillService) SendManualReminder(ctx context.Context, id uint) er
 	_, _ = s.db.NewUpdate().Model(&b).Column("last_notified_at").WherePK().Exec(ctx)
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"student_id": b.StudentID, "bill_id": b.ID, "notif_type": notifType}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "SEND_MANUAL_BILL_REMINDER", "student_bills", b.ID, nil, newVals, ipAddress, userAgent)
 	}

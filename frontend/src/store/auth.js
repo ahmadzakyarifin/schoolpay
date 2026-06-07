@@ -33,6 +33,11 @@ export const useAuthStore = defineStore('auth', {
             } catch (err) {
                 if (err.response?.status === 401) { 
                     this.error = "Email atau Password Salah" 
+                } else if (err.response?.status === 429) {
+                    const retryAfter = Number(err.response?.data?.data?.retry_after_seconds || err.response?.headers?.['retry-after'] || 0)
+                    this.error = retryAfter > 0
+                        ? `Terlalu banyak percobaan. Coba lagi dalam ${retryAfter} detik.`
+                        : (err.response?.data?.message || "Terlalu banyak percobaan. Coba lagi sebentar lagi.")
                 } else { 
                     this.error = err.response?.data?.message || "Login gagal" 
                 }

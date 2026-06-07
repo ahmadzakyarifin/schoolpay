@@ -11,7 +11,7 @@ type Student struct {
 	bun.BaseModel `bun:"table:students,alias:s"`
 
 	ID             uint             `bun:"id,pk,autoincrement" json:"id" form:"id"`
-	NIK            string           `bun:"nik,unique" json:"nik" form:"nik" binding:"required,custom_nik"`
+	NIK            string           `bun:"nik,unique" json:"nik" form:"nik" binding:"required,numeric,len=16"`
 	NIS            string           `bun:"nis,unique,nullzero" json:"nis" form:"nis" binding:"omitempty,min=3,max=20"`
 	NISN           string           `bun:"nisn,unique" json:"nisn" form:"nisn" binding:"required,min=10,max=10"`
 	ParentID       uint             `bun:"parent_id" json:"parent_id" form:"parent_id" binding:"required"`
@@ -20,7 +20,7 @@ type Student struct {
 	Name           string           `bun:"name" json:"name" form:"name" binding:"required,min=2"`
 	Gender         string           `bun:"gender" json:"gender" form:"gender" binding:"required"`
 	BirthPlace     string           `bun:"birth_place" json:"birth_place" form:"birth_place" binding:"required"`
-	BirthDate      utils.CustomDate `bun:"birth_date" json:"birth_date" form:"birth_date" binding:"required"`
+	BirthDate      utils.CustomDate `bun:"birth_date" json:"birth_date" form:"birth_date" binding:"-"`
 	Religion       string           `bun:"religion" json:"religion" form:"religion" binding:"required"`
 	Address        string           `bun:"address" json:"address" form:"address" binding:"omitempty"`
 	RT             string           `bun:"rt" json:"rt" form:"rt" binding:"required,min=1,max=5"`

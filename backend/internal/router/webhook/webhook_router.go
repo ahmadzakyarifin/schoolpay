@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"github.com/ahmadzakyarifin/schoolpay/config"
+	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	financerepo "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
@@ -17,7 +18,6 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 )
 
@@ -31,7 +31,6 @@ func RouterWebhookSetup(
 	sbSvc financeusecase.StudentBillService,
 	finNotifSvc notificationusecase.FinanceNotificationService,
 	auditSvc auditusecase.AuditLogService,
-	redisClient *redis.Client,
 ) {
 	repo := webhookrepo.NewWebhookRepo(db)
 	payRepo := financerepo.NewPaymentRepo(db)
@@ -43,7 +42,7 @@ func RouterWebhookSetup(
 
 	waSvc := notificationusecase.NewWhatsAppService()
 	supportSvc := supportusecase.NewSupportService(db, supportRepo, userRepo, waSvc, auditSvc)
-	svc := webhookusecase.NewWebhookService(repo, waSvc, notiRepo, sbRepo, payRepo, stuRepo, userRepo, hub, supportSvc, cfg, redisClient)
+	svc := webhookusecase.NewWebhookService(repo, waSvc, notiRepo, sbRepo, payRepo, stuRepo, userRepo, hub, supportSvc, cfg)
 	pgSvc := financeusecase.NewPaymentGatewayService(cfg)
 
 	hdl := webhookhandler.NewWebhookHandler(svc, paySvc, pgSvc, cfg)
@@ -51,6 +50,9 @@ func RouterWebhookSetup(
 	// Register Webhook to WAHA automatically on startup
 	go waSvc.RegisterWebhook()
 
-	g.POST("/wa-webhook", hdl.HandleWAHA)
-	g.POST("/payments/callback", hdl.HandlePayment)
+	wahaWebhookLimit := middleware.RateLimitAuthSaringan("webhook_waha", "ip", 600)
+	paymentWebhookLimit := middleware.RateLimitAuthSaringan("webhook_payment", "ip", 120)
+
+	g.POST("/wa-webhook", wahaWebhookLimit, hdl.HandleWAHA)
+	g.POST("/payments/callback", paymentWebhookLimit, hdl.HandlePayment)
 }

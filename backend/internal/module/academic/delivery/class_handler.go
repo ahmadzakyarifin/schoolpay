@@ -7,7 +7,7 @@ import (
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +22,7 @@ func NewClassHandler(s usecase.ClassService) *ClassHandler {
 func (h *ClassHandler) Create(c *gin.Context) {
 	var j domain.Class
 	if err := c.ShouldBindJSON(&j); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	if err := h.s.Create(c.Request.Context(), &j); err != nil {
@@ -36,13 +36,13 @@ func (h *ClassHandler) Create(c *gin.Context) {
 			if len(errMsg) > 7 {
 				cleanMsg = strings.TrimSpace(errMsg[6:])
 			}
-			utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
+			helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
 			return
 		}
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusCreated, "kelas berhasil dibuat", j)
+	helper.SuccessResponse(c, http.StatusCreated, "kelas berhasil dibuat", j)
 }
 
 func (h *ClassHandler) GetAll(c *gin.Context) {
@@ -59,10 +59,10 @@ func (h *ClassHandler) GetAll(c *gin.Context) {
 
 	list, total, err := h.s.GetAll(c.Request.Context(), page, limit, search, status, majorID, ayID, sort)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data kelas", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data kelas", gin.H{
 		"data":  list,
 		"total": total,
 	})
@@ -72,7 +72,7 @@ func (h *ClassHandler) Update(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var j domain.Class
 	if err := c.ShouldBindJSON(&j); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	j.ID = uint(id)
@@ -87,40 +87,40 @@ func (h *ClassHandler) Update(c *gin.Context) {
 			if len(errMsg) > 7 {
 				cleanMsg = strings.TrimSpace(errMsg[6:])
 			}
-			utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
+			helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
 			return
 		}
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "kelas berhasil diperbarui", j)
+	helper.SuccessResponse(c, http.StatusOK, "kelas berhasil diperbarui", j)
 }
 
 func (h *ClassHandler) Delete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.Delete(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "kelas berhasil dihapus", nil)
+	helper.SuccessResponse(c, http.StatusOK, "kelas berhasil dihapus", nil)
 }
 
 func (h *ClassHandler) Restore(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.Restore(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "kelas berhasil dipulihkan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "kelas berhasil dipulihkan", nil)
 }
 
 func (h *ClassHandler) ToggleStatus(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.ToggleStatus(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "status kelas berhasil diubah", nil)
+	helper.SuccessResponse(c, http.StatusOK, "status kelas berhasil diubah", nil)
 }
 
 func (h *ClassHandler) BulkDelete(c *gin.Context) {
@@ -128,15 +128,15 @@ func (h *ClassHandler) BulkDelete(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 
 	if err := h.s.BulkDelete(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "data berhasil dihapus", nil)
+	helper.SuccessResponse(c, http.StatusOK, "data berhasil dihapus", nil)
 }
 
 func (h *ClassHandler) BulkRestore(c *gin.Context) {
@@ -144,15 +144,15 @@ func (h *ClassHandler) BulkRestore(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 
 	if err := h.s.BulkRestore(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "data berhasil dipulihkan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "data berhasil dipulihkan", nil)
 }
 
 func (h *ClassHandler) SuggestNextName(c *gin.Context) {
@@ -162,20 +162,20 @@ func (h *ClassHandler) SuggestNextName(c *gin.Context) {
 	excludeID, _ := strconv.Atoi(c.Query("exclude_id"))
 	nextName, err := h.s.SuggestNextName(c.Request.Context(), name, uint(ayID), uint(majorID), uint(excludeID))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mendapatkan saran nama", nextName)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mendapatkan saran nama", nextName)
 }
 
 func (h *ClassHandler) GetDependencyInfo(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	info, err := h.s.GetDependencyInfo(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", info)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", info)
 }
 
 func (h *ClassHandler) CheckUnique(c *gin.Context) {
@@ -185,15 +185,15 @@ func (h *ClassHandler) CheckUnique(c *gin.Context) {
 	excludeID, _ := strconv.ParseUint(c.Query("exclude_id"), 10, 32)
 
 	if name == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "name harus diisi")
+		helper.ErrorResponse(c, http.StatusBadRequest, "name harus diisi")
 		return
 	}
 
 	exists, err := h.s.CheckUnique(c.Request.Context(), name, uint(majorID), uint(ayID), uint(excludeID))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{"is_unique": !exists})
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{"is_unique": !exists})
 }

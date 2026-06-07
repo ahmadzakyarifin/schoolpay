@@ -154,7 +154,7 @@ func Test_authRepo_SaveRefreshToken(t *testing.T) {
 	}
 }
 
-func Test_authRepo_FindRefreshToken(t *testing.T) {
+func Test_authRepo_FindUserByRefreshToken(t *testing.T) {
 	type fields struct {
 		db *bun.DB
 	}
@@ -166,7 +166,7 @@ func Test_authRepo_FindRefreshToken(t *testing.T) {
 		name    string
 		fields  fields
 		args    args
-		want    uint
+		want    *domain.User
 		wantErr bool
 	}{
 		// Add test cases.
@@ -176,15 +176,15 @@ func Test_authRepo_FindRefreshToken(t *testing.T) {
 			r := &authRepo{
 				db: tt.fields.db,
 			}
-			got, err := r.FindRefreshToken(tt.args.ctx, tt.args.token)
+			got, err := r.FindUserByRefreshToken(tt.args.ctx, tt.args.token)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("authRepo.FindRefreshToken() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("authRepo.FindUserByRefreshToken() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
 				return
 			}
 			if got != tt.want {
-				t.Errorf("authRepo.FindRefreshToken() = %v, want %v", got, tt.want)
+				t.Errorf("authRepo.FindUserByRefreshToken() = %v, want %v", got, tt.want)
 			}
 		})
 	}

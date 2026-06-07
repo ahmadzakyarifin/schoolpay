@@ -428,20 +428,20 @@ onMounted(() => {
     </div>
 
     <!-- 3. Dynamic Tables -->
-    <div class="white-card p-0 flex flex-col min-h-[600px]">
-      <div class="p-8 border-b border-slate-50 flex items-center justify-between">
-        <div class="flex items-center gap-4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col min-h-[600px] overflow-hidden">
+      <div class="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+        <div class="flex items-center gap-3">
           <div class="w-1.5 h-5 bg-indigo-600 rounded-full"></div>
           <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">
             {{ activeTab === 'payments' ? 'Detail Transaksi Pembayaran' : (activeTab === 'arrears' ? 'Daftar Siswa Menunggak' : 'Rekapitulasi Data Akademik') }}
           </h3>
         </div>
         <div class="flex items-center gap-3">
-          <button @click="downloadReport('xlsx', 'global')" :disabled="isOffline" :title="isOffline ? 'Export membutuhkan server online agar data laporan terbaru.' : 'Ekspor Excel'" :class="['font-bold py-2 px-4 rounded-xl border text-[10px] flex items-center gap-2 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">
+          <button @click="downloadReport('xlsx', 'global')" :disabled="isOffline" :title="isOffline ? 'Export membutuhkan server online agar data laporan terbaru.' : 'Ekspor Excel'" :class="['font-bold py-1.5 px-3 rounded-lg border text-[10px] flex items-center gap-2 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">
             <ExcelIcon class="w-3.5 h-3.5" :class="isOffline ? 'text-amber-600' : 'text-emerald-600'" />
             <span>{{ isOffline ? 'Excel Online Saja' : 'Ekspor Excel' }}</span>
           </button>
-          <button @click="downloadReport('pdf', 'global')" :disabled="isOffline" :title="isOffline ? 'Export membutuhkan server online agar data laporan terbaru.' : 'Ekspor PDF'" :class="['font-bold py-2 px-4 rounded-xl border text-[10px] flex items-center gap-2 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">
+          <button @click="downloadReport('pdf', 'global')" :disabled="isOffline" :title="isOffline ? 'Export membutuhkan server online agar data laporan terbaru.' : 'Ekspor PDF'" :class="['font-bold py-1.5 px-3 rounded-lg border text-[10px] flex items-center gap-2 transition-all shadow-sm', isOffline ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50']">
             <PDFIcon class="w-3.5 h-3.5" :class="isOffline ? 'text-amber-600' : 'text-rose-600'" />
             <span>{{ isOffline ? 'PDF Online Saja' : 'Ekspor PDF' }}</span>
           </button>
@@ -449,23 +449,23 @@ onMounted(() => {
       </div>
 
       <div class="flex-1 overflow-x-auto">
-        <table class="w-full text-left">
+        <table class="w-full text-left border-collapse">
           <!-- TAB: PAYMENTS -->
           <template v-if="activeTab === 'payments'">
             <thead>
-              <tr class="bg-slate-50/50 border-b border-slate-50">
-                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Transaksi</th>
-                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Rincian Tagihan</th>
-                <th class="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Nominal</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Metode</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Tanggal</th>
+              <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th class="py-3 px-4">Transaksi</th>
+                <th class="py-3 px-4">Rincian Tagihan</th>
+                <th class="py-3 px-4 text-center">Nominal</th>
+                <th class="py-3 px-4 text-center">Metode</th>
+                <th class="py-3 px-4 text-right">Tanggal</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="item in previewData" :key="item.id" class="hover:bg-slate-50/50 transition-colors group">
-                <td class="px-8 py-5">
+              <tr v-for="item in previewData" :key="item.id" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600">
+                <td class="py-3 px-4">
                   <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-black text-[10px] border border-indigo-100">
+                    <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-black text-[10px] border border-indigo-100 shrink-0">
                       {{ item.student_name?.[0] }}
                     </div>
                     <div class="min-w-0">
@@ -476,7 +476,7 @@ onMounted(() => {
                     </div>
                   </div>
                 </td>
-                <td class="px-8 py-5 max-w-[360px]">
+                <td class="py-3 px-4 max-w-[360px]">
                   <button @click="openPaymentTypeModal(item)" class="w-full text-left group/detail" :title="displayBillTypes(item.bill_type_names)">
                     <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider truncate group-hover/detail:text-indigo-600">
                       {{ paymentSummaryTitle(item) }}
@@ -491,21 +491,21 @@ onMounted(() => {
                     </div>
                   </button>
                 </td>
-                <td class="px-8 py-5 text-center">
+                <td class="py-3 px-4 text-center">
                   <span class="text-[10px] font-black text-slate-700">{{ formatCurrency(item.amount) }}</span>
                   <p v-if="Number(item.deposit_applied || 0) > 0" class="text-[8px] font-bold text-slate-400 uppercase mt-1">Saldo {{ formatCurrency(item.deposit_applied) }} • Tunai/Gateway {{ formatCurrency(item.cash_or_gateway_amount) }}</p>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <span class="px-3 py-1 bg-white border border-slate-100 rounded-full text-[8px] font-black text-slate-500 uppercase">{{ formatPaymentMethod(item.method) }}</span>
                 </td>
-                <td class="px-10 py-4 text-right">
+                <td class="py-3 px-4 text-right">
                   <p class="text-[10px] font-bold text-slate-400 uppercase">{{ formatDateTime(item.created_at) }}</p>
                 </td>
               </tr>
               <tr v-if="!previewLoading && previewData.length === 0">
-                <td colspan="5" class="px-10 py-20 text-center">
-                  <ClockIcon class="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                  <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Belum ada data pembayaran sesuai filter</p>
+                <td colspan="5" class="py-20 text-center">
+                  <ClockIcon class="w-10 h-10 text-slate-200 mx-auto mb-3 animate-pulse" />
+                  <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Belum ada data pembayaran sesuai filter</p>
                 </td>
               </tr>
             </tbody>
@@ -514,37 +514,37 @@ onMounted(() => {
           <!-- TAB: ARREARS -->
           <template v-else-if="activeTab === 'arrears'">
             <thead>
-              <tr class="bg-slate-50/50 border-b border-slate-50">
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Siswa</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Kelas</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tagihan</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Mulai</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Jatuh Tempo</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Sisa Tagihan</th>
+              <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th class="py-3 px-4">Siswa</th>
+                <th class="py-3 px-4 text-center">Kelas</th>
+                <th class="py-3 px-4 text-center">Tagihan</th>
+                <th class="py-3 px-4 text-center">Mulai</th>
+                <th class="py-3 px-4 text-center">Jatuh Tempo</th>
+                <th class="py-3 px-4 text-right">Sisa Tagihan</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="item in previewData" :key="item.id" class="hover:bg-slate-50/50 transition-colors group">
-                <td class="px-10 py-4 max-w-[200px] truncate">
-                  <p class="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{{ item.student_name }}</p>
+              <tr v-for="item in previewData" :key="item.id" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600">
+                <td class="py-3 px-4 max-w-[200px] truncate">
+                  <p class="text-xs font-black text-slate-800 uppercase tracking-wider truncate">{{ item.student_name }}</p>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <span class="text-[10px] font-bold text-slate-600">{{ item.class_name }}</span>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <p class="text-[10px] font-black text-slate-700 uppercase">{{ item.bill_name }}</p>
                   <p class="text-[9px] font-bold text-slate-400 uppercase">{{ item.period || '-' }}</p>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <span class="text-[10px] font-bold text-slate-500">{{ formatDate(item.start_date) }}</span>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <span :class="['text-[10px] font-black', getRemainingDaysText(item.due_date).startsWith('Telat') ? 'text-rose-600' : (getRemainingDaysText(item.due_date) === 'Hari Ini' ? 'text-amber-600' : 'text-slate-600')]">
                     {{ formatDate(item.due_date) }}
                     <span v-if="getRemainingDaysText(item.due_date)">({{ getRemainingDaysText(item.due_date) }})</span>
                   </span>
                 </td>
-                <td class="px-10 py-4 text-right">
+                <td class="py-3 px-4 text-right">
                   <span class="text-[10px] font-black text-slate-700">{{ formatCurrency(item.amount - item.total_paid) }}</span>
                 </td>
               </tr>
@@ -554,21 +554,21 @@ onMounted(() => {
           <!-- TAB: ACADEMIC -->
           <template v-else>
             <thead>
-              <tr class="bg-slate-50/50 border-b border-slate-50">
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">Nama Kategori</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">Tipe</th>
-                <th class="px-10 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Jumlah Siswa</th>
+              <tr class="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <th class="py-3 px-4">Nama Kategori</th>
+                <th class="py-3 px-4 text-center">Tipe</th>
+                <th class="py-3 px-4 text-right">Jumlah Siswa</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
-              <tr v-for="(item, idx) in previewData" :key="idx" class="hover:bg-slate-50/50 transition-colors group">
-                <td class="px-10 py-4 max-w-[200px] truncate">
-                  <p class="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{{ item.name }}</p>
+              <tr v-for="(item, idx) in previewData" :key="idx" class="border-b border-slate-100 hover:bg-slate-50/30 transition-all text-xs font-semibold text-slate-600">
+                <td class="py-3 px-4 max-w-[200px] truncate">
+                  <p class="text-xs font-black text-slate-800 uppercase tracking-wider truncate">{{ item.name }}</p>
                 </td>
-                <td class="px-10 py-4 text-center">
+                <td class="py-3 px-4 text-center">
                   <span class="px-3 py-1 bg-slate-100 rounded-full text-[8px] font-black text-slate-500 uppercase">{{ item.type }}</span>
                 </td>
-                <td class="px-10 py-4 text-right">
+                <td class="py-3 px-4 text-right">
                   <span class="text-[10px] font-black text-indigo-600">{{ item.count }} Siswa</span>
                 </td>
               </tr>
@@ -578,7 +578,7 @@ onMounted(() => {
       </div>
 
       <!-- Footer with Pagination -->
-      <div class="px-8 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+      <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between mt-auto">
         <div class="flex items-center gap-6">
           <div class="flex items-center gap-3">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilkan</span>
@@ -601,9 +601,9 @@ onMounted(() => {
             v-if="totalPages > 1"
             @click="page > 1 && (page--)" 
             :disabled="page <= 1" 
-            class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
           >
-            <PrevIcon class="w-4 h-4" />
+            <PrevIcon class="w-3.5 h-3.5" />
           </button>
 
           <!-- Page Numbers (Max 3) -->
@@ -612,7 +612,7 @@ onMounted(() => {
               v-for="p in visiblePages" 
               :key="p"
               @click="page = p"
-              class="w-10 h-10 flex items-center justify-center rounded-xl text-[10px] font-black transition-all cursor-pointer"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-black transition-all cursor-pointer"
               :class="p === page 
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
                 : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'"
@@ -626,9 +626,9 @@ onMounted(() => {
             v-if="totalPages > 1"
             @click="page < totalPages && (page++)" 
             :disabled="page >= totalPages" 
-            class="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
+            class="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:bg-indigo-50/30 disabled:opacity-20 disabled:hover:bg-white disabled:hover:border-slate-200 transition-all cursor-pointer"
           >
-            <NextIcon class="w-4 h-4" />
+            <NextIcon class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

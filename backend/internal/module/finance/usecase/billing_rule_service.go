@@ -11,7 +11,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
 	notificationusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 )
 
@@ -121,7 +121,7 @@ func (s *billingRuleService) Create(ctx context.Context, br *domain.BillingRule)
 
 	err = s.repo.Create(ctx, br)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"bill_type_id": br.BillTypeID, "amount": br.Amount, "target_type": br.TargetType, "target_id": br.TargetID, "class_id": br.ClassID, "period_type": br.PeriodType, "allow_installment": br.AllowInstallment, "due_day": br.DueDay, "start_date": br.StartDate, "end_date": br.EndDate}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "CREATE", "billing_rules", br.ID, nil, newVals, ipAddress, userAgent)
 	}
@@ -221,7 +221,7 @@ func (s *billingRuleService) Update(ctx context.Context, br *domain.BillingRule)
 	existing, _ := s.repo.FindByID(ctx, br.ID)
 	err = s.repo.Update(ctx, br)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"bill_type_id": existing.BillTypeID, "amount": existing.Amount, "target_type": existing.TargetType, "target_id": existing.TargetID, "class_id": existing.ClassID, "period_type": existing.PeriodType, "allow_installment": existing.AllowInstallment, "due_day": existing.DueDay, "start_date": existing.StartDate, "end_date": existing.EndDate}
 		newVals := map[string]interface{}{"bill_type_id": br.BillTypeID, "amount": br.Amount, "target_type": br.TargetType, "target_id": br.TargetID, "class_id": br.ClassID, "period_type": br.PeriodType, "allow_installment": br.AllowInstallment, "due_day": br.DueDay, "start_date": br.StartDate, "end_date": br.EndDate}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "UPDATE", "billing_rules", br.ID, oldVals, newVals, ipAddress, userAgent)
@@ -248,7 +248,7 @@ func (s *billingRuleService) Delete(ctx context.Context, id uint) error {
 	}
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"bill_type_id": existing.BillTypeID, "status": "active"}
 		newVals := map[string]interface{}{"status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "billing_rules", id, oldVals, newVals, ipAddress, userAgent)
@@ -261,7 +261,7 @@ func (s *billingRuleService) Restore(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.Restore(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"bill_type_id": existing.BillTypeID, "status": "deleted"}
 		newVals := map[string]interface{}{"status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "billing_rules", id, oldVals, newVals, ipAddress, userAgent)
@@ -273,7 +273,7 @@ func (s *billingRuleService) ToggleStatus(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.ToggleStatus(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive}
 		newVals := map[string]interface{}{"is_active": !existing.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "TOGGLE_STATUS", "billing_rules", id, oldVals, newVals, ipAddress, userAgent)
@@ -293,7 +293,7 @@ func (s *billingRuleService) BulkDelete(ctx context.Context, ids []uint) error {
 func (s *billingRuleService) BulkRestore(ctx context.Context, ids []uint) error {
 	err := s.repo.BulkRestore(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}

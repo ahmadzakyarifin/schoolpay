@@ -443,12 +443,12 @@ onMounted(() => { isMounted.value = true; loadState(); fetchData() })
     </Teleport>
 
     <!-- Main Content Card -->
-    <div class="bg-white rounded border border-slate-200 shadow-sm flex flex-col min-h-[710px] transition-all duration-500 overflow-hidden">
+    <div class="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col min-h-[710px] transition-all duration-500 overflow-hidden">
       <!-- Table Header -->
-      <div class="px-6 py-6 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <div class="w-2 h-6 bg-indigo-500 rounded-full"></div>
-          <h3 class="font-black text-slate-700 text-sm uppercase tracking-[0.2em]">{{ showHistory ? 'Riwayat Penghapusan' : 'Data Operasional Major' }}</h3>
+      <div class="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+        <div class="flex items-center gap-2 font-black text-slate-700 text-xs uppercase tracking-widest">
+          <DatabaseIcon class="w-3.5 h-3.5 text-indigo-600" />
+          <span>{{ showHistory ? 'Riwayat Penghapusan' : 'Data Operasional Major' }}</span>
         </div>
 
         <div class="flex items-center gap-3">
@@ -460,15 +460,15 @@ onMounted(() => { isMounted.value = true; loadState(); fetchData() })
             @restore="confirmBulkRestore"
           />
 
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
             <button @click="showHistory = !showHistory" 
-              class="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all shadow-sm group font-bold">
+              class="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl transition-all shadow-sm group font-bold">
               <HistoryIcon v-if="!showHistory" class="w-3.5 h-3.5 text-slate-600" />
               <RestoreIcon v-else class="w-3.5 h-3.5 text-slate-600" />
               <span class="text-[9px] font-black uppercase tracking-widest">{{ showHistory ? 'Kembali ke Data Aktif' : 'Lihat Riwayat Hapus' }}</span>
             </button>
 
-            <button v-if="!showHistory" @click="openAddModal" class="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-2.5 px-6 rounded-xl flex items-center gap-2 shadow-xl shadow-indigo-100 transition-all text-[10px] uppercase tracking-widest shrink-0">
+            <button v-if="!showHistory" @click="openAddModal" class="bg-indigo-600 hover:bg-indigo-700 text-white font-black py-1.5 px-4 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-100 transition-all text-[10px] uppercase tracking-widest shrink-0">
               <PlusIcon class="w-3.5 h-3.5" />
               <span>Tambah Data</span>
             </button>
@@ -489,7 +489,7 @@ onMounted(() => { isMounted.value = true; loadState(); fetchData() })
       />
 
       <!-- Pagination Footer -->
-      <div class="p-8 border-t border-slate-50 bg-slate-50/20 flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div class="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
         <div class="flex items-center gap-6">
           <div class="flex items-center gap-3">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tampilkan</span>
@@ -505,20 +505,20 @@ onMounted(() => { isMounted.value = true; loadState(); fetchData() })
 
         <div class="flex items-center gap-2">
           <button v-if="totalPages > 1" @click="page--" :disabled="page === 1 || loading" 
-            class="w-10 h-10 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
-            <PrevIcon class="w-4 h-4" />
+            class="w-8 h-8 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-20 transition-all shadow-sm flex items-center justify-center cursor-pointer">
+            <PrevIcon class="w-3.5 h-3.5" />
           </button>
-          <div class="flex items-center gap-1.5 mx-1">
+          <div class="flex items-center gap-1">
             <button v-for="p in visiblePages" :key="p" @click="page = p"
-              class="w-10 h-10 rounded-xl text-[10px] font-black transition-all border flex items-center justify-center shadow-sm cursor-pointer"
-              :class="page === p ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-600/20' : 
-                                 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'">
+              class="w-8 h-8 rounded-lg text-[10px] font-black transition-all flex items-center justify-center cursor-pointer"
+              :class="page === p ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 
+                                 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300'">
               {{ p }}
             </button>
           </div>
           <button v-if="totalPages > 1" @click="page++" :disabled="page >= totalPages || loading" 
-            class="w-10 h-10 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-30 transition-all shadow-sm flex items-center justify-center cursor-pointer">
-            <NextIcon class="w-4 h-4" />
+            class="w-8 h-8 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-100 disabled:opacity-20 transition-all shadow-sm flex items-center justify-center cursor-pointer">
+            <NextIcon class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

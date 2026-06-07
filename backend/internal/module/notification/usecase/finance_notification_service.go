@@ -1,20 +1,19 @@
 package usecase
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	financedomain "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
+	notificationdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/domain"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
-	"github.com/hibiken/asynq"
 	"github.com/uptrace/bun"
 )
-
-const TaskFinanceNotification = "notification:finance"
 
 type FinanceNotifyJob struct {
 	StudentID     uint                       `json:"student_id"`
@@ -30,24 +29,22 @@ type FinanceNotificationService interface {
 }
 
 type financeNotificationService struct {
-	db          *bun.DB
-	stuRepo     academicrepo.StudentRepo
-	userRepo    userauthrepo.UserRepo
-	notiRepo    notificationrepo.NotificationRepo
-	msg         utils.Messenger
-	audit       auditusecase.AuditLogService
-	asynqClient *asynq.Client
+	db       *bun.DB
+	stuRepo  academicrepo.StudentRepo
+	userRepo userauthrepo.UserRepo
+	notiRepo notificationrepo.NotificationRepo
+	msg      utils.Messenger
+	audit    auditusecase.AuditLogService
 }
 
-func NewFinanceNotificationService(db *bun.DB, stuRepo academicrepo.StudentRepo, userRepo userauthrepo.UserRepo, notiRepo notificationrepo.NotificationRepo, msg utils.Messenger, audit auditusecase.AuditLogService, asynqClient *asynq.Client) FinanceNotificationService {
+func NewFinanceNotificationService(db *bun.DB, stuRepo academicrepo.StudentRepo, userRepo userauthrepo.UserRepo, notiRepo notificationrepo.NotificationRepo, msg utils.Messenger, audit auditusecase.AuditLogService) FinanceNotificationService {
 	return &financeNotificationService{
-		db:          db,
-		stuRepo:     stuRepo,
-		userRepo:    userRepo,
-		notiRepo:    notiRepo,
-		msg:         msg,
-		audit:       audit,
-		asynqClient: asynqClient,
+		db:       db,
+		stuRepo:  stuRepo,
+		userRepo: userRepo,
+		notiRepo: notiRepo,
+		msg:      msg,
+		audit:    audit,
 	}
 }
 
@@ -57,8 +54,14 @@ func (s *financeNotificationService) Notify(job FinanceNotifyJob) {
 		fmt.Printf("[FinanceNotificationService] failed to marshal job: %v\n", err)
 		return
 	}
-	task := asynq.NewTask(TaskFinanceNotification, payload, asynq.MaxRetry(3))
-	if _, err := s.asynqClient.Enqueue(task); err != nil {
-		fmt.Printf("[FinanceNotificationService] failed to enqueue task: %v\n", err)
+
+	bj := &notificationdomain.BackgroundJob{
+		TaskName: "notification:finance",
+		Payload:  string(payload),
+		Status:   "pending",
+	}
+
+	if _, err := s.db.NewInsert().Model(bj).Exec(context.Background()); err != nil {
+		fmt.Printf("[FinanceNotificationService] failed to save job: %v\n", err)
 	}
 }

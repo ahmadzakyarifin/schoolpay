@@ -1,17 +1,12 @@
 package main
 
 import (
-	"time"
-	_ "time/tzdata"
-
 	"github.com/ahmadzakyarifin/schoolpay/config"
-	"github.com/ahmadzakyarifin/schoolpay/database"
 	infrastructure "github.com/ahmadzakyarifin/schoolpay/internal/Infrastructure"
 	"github.com/ahmadzakyarifin/schoolpay/internal/app"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/rs/zerolog/log"
 
-	// Swagger docs
 	_ "github.com/ahmadzakyarifin/schoolpay/docs"
 )
 
@@ -32,22 +27,12 @@ import (
 // @in header
 // @name Authorization
 func main() {
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err == nil {
-		time.Local = loc
-	}
-
 	cfg := config.LoadConfig()
 	utils.InitLogger(cfg.AppEnv)
 
 	db, err := infrastructure.ConnectDB(*cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
-	}
-
-	// Run migrations
-	if err := database.RunMigrations(db); err != nil {
-		log.Warn().Err(err).Msg("Peringatan Migrasi")
 	}
 
 	app := app.NewApp(db, cfg)

@@ -10,7 +10,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 )
 
@@ -92,7 +92,7 @@ func (s *classService) Create(ctx context.Context, c *domain.Class) error {
 
 	err = s.repo.Create(ctx, c)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{
 			"name": c.Name, "major_id": c.MajorID, "academic_year_id": c.AcademicYearID, "is_active": c.IsActive,
 		}
@@ -139,7 +139,7 @@ func (s *classService) Update(ctx context.Context, c *domain.Class) error {
 	existing, _ := s.repo.FindByID(ctx, c.ID)
 	err = s.repo.Update(ctx, c)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"name": existing.Name, "major_id": existing.MajorID, "academic_year_id": existing.AcademicYearID, "is_active": existing.IsActive}
 		newVals := map[string]interface{}{"name": c.Name, "major_id": c.MajorID, "academic_year_id": c.AcademicYearID, "is_active": c.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "UPDATE", "classes", c.ID, oldVals, newVals, ipAddress, userAgent)
@@ -159,7 +159,7 @@ func (s *classService) Delete(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err = s.repo.Delete(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive, "status": "active"}
 		newVals := map[string]interface{}{"is_active": false, "status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "classes", id, oldVals, newVals, ipAddress, userAgent)
@@ -171,7 +171,7 @@ func (s *classService) Restore(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.Restore(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive, "status": "deleted"}
 		newVals := map[string]interface{}{"is_active": true, "status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "classes", id, oldVals, newVals, ipAddress, userAgent)
@@ -183,7 +183,7 @@ func (s *classService) ToggleStatus(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	err := s.repo.ToggleStatus(ctx, id)
 	if err == nil && existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"is_active": existing.IsActive}
 		newVals := map[string]interface{}{"is_active": !existing.IsActive}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "TOGGLE_STATUS", "classes", id, oldVals, newVals, ipAddress, userAgent)
@@ -204,7 +204,7 @@ func (s *classService) BulkDelete(ctx context.Context, ids []uint) error {
 
 	err := s.repo.BulkDelete(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "active"}
 			newVals := map[string]interface{}{"status": "deleted"}
@@ -217,7 +217,7 @@ func (s *classService) BulkDelete(ctx context.Context, ids []uint) error {
 func (s *classService) BulkRestore(ctx context.Context, ids []uint) error {
 	err := s.repo.BulkRestore(ctx, ids)
 	if err == nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}

@@ -8,7 +8,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	financeusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
 	webhookusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/webhook/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,7 +41,7 @@ func (h *WebhookHandler) HandlePayment(c *gin.Context) {
 	}
 
 	if err := h.pay.HandleWebhook(c.Request.Context(), notification); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -52,21 +52,21 @@ func (h *WebhookHandler) HandleWAHA(c *gin.Context) {
 	if h.cfg != nil && h.cfg.WAHAWebhookSecret != "" {
 		secret := c.GetHeader("X-SchoolPay-Webhook-Secret")
 		if subtle.ConstantTimeCompare([]byte(secret), []byte(h.cfg.WAHAWebhookSecret)) != 1 {
-			utils.ErrorResponse(c, http.StatusUnauthorized, "invalid webhook secret")
+			helper.ErrorResponse(c, http.StatusUnauthorized, "invalid webhook secret")
 			return
 		}
 	}
 
 	var payload json.RawMessage
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "invalid payload")
+		helper.ErrorResponse(c, http.StatusBadRequest, "invalid payload")
 		return
 	}
 
 	if err := h.s.HandleWAHAWebhook(c.Request.Context(), payload); err != nil {
-		utils.SuccessResponse(c, http.StatusOK, "logged with error", nil)
+		helper.SuccessResponse(c, http.StatusOK, "logged with error", nil)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "webhook received", nil)
+	helper.SuccessResponse(c, http.StatusOK, "webhook received", nil)
 }

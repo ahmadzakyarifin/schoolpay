@@ -7,7 +7,7 @@ import (
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/usecase"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +22,7 @@ func NewAcademicYearHandler(s usecase.AcademicYearService) *AcademicYearHandler 
 func (h *AcademicYearHandler) Create(c *gin.Context) {
 	var ay domain.AcademicYear
 	if err := c.ShouldBindJSON(&ay); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	if err := h.s.Create(c.Request.Context(), &ay); err != nil {
@@ -40,13 +40,13 @@ func (h *AcademicYearHandler) Create(c *gin.Context) {
 			if len(errMsg) > 7 {
 				cleanMsg = strings.TrimSpace(errMsg[6:])
 			}
-			utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
+			helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
 			return
 		}
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusCreated, "angkatan berhasil dibuat", ay)
+	helper.SuccessResponse(c, http.StatusCreated, "angkatan berhasil dibuat", ay)
 }
 
 func (h *AcademicYearHandler) GetAll(c *gin.Context) {
@@ -58,10 +58,10 @@ func (h *AcademicYearHandler) GetAll(c *gin.Context) {
 
 	list, total, err := h.s.GetAll(c.Request.Context(), page, limit, search, status, sort)
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data angkatan", gin.H{
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data angkatan", gin.H{
 		"data":  list,
 		"total": total,
 	})
@@ -71,7 +71,7 @@ func (h *AcademicYearHandler) Update(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var ay domain.AcademicYear
 	if err := c.ShouldBindJSON(&ay); err != nil {
-		utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", utils.GetValidationErrors(err))
+		helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", helper.GetValidationErrors(err))
 		return
 	}
 	ay.ID = uint(id)
@@ -90,31 +90,31 @@ func (h *AcademicYearHandler) Update(c *gin.Context) {
 			if len(errMsg) > 7 {
 				cleanMsg = strings.TrimSpace(errMsg[6:])
 			}
-			utils.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
+			helper.ErrorValidationResponse(c, http.StatusBadRequest, "validasi gagal", map[string][]string{field: {cleanMsg}})
 			return
 		}
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "angkatan berhasil diperbarui", ay)
+	helper.SuccessResponse(c, http.StatusOK, "angkatan berhasil diperbarui", ay)
 }
 
 func (h *AcademicYearHandler) Delete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.Delete(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "angkatan berhasil dihapus", nil)
+	helper.SuccessResponse(c, http.StatusOK, "angkatan berhasil dihapus", nil)
 }
 
 func (h *AcademicYearHandler) Restore(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if err := h.s.Restore(c.Request.Context(), uint(id)); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "angkatan berhasil dipulihkan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "angkatan berhasil dipulihkan", nil)
 }
 
 func (h *AcademicYearHandler) BulkDelete(c *gin.Context) {
@@ -122,14 +122,14 @@ func (h *AcademicYearHandler) BulkDelete(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 	if err := h.s.BulkDelete(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "data berhasil dihapus", nil)
+	helper.SuccessResponse(c, http.StatusOK, "data berhasil dihapus", nil)
 }
 
 func (h *AcademicYearHandler) BulkRestore(c *gin.Context) {
@@ -137,23 +137,23 @@ func (h *AcademicYearHandler) BulkRestore(c *gin.Context) {
 		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "ID tidak valid")
 		return
 	}
 	if err := h.s.BulkRestore(c.Request.Context(), req.IDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusBadRequest, err)
+		helper.ErrorResponseRaw(c, http.StatusBadRequest, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "data berhasil dipulihkan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "data berhasil dipulihkan", nil)
 }
 
 func (h *AcademicYearHandler) GetActive(c *gin.Context) {
 	list, err := h.s.GetActive(c.Request.Context())
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data angkatan aktif", list)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data angkatan aktif", list)
 }
 
 func (h *AcademicYearHandler) AssignMajors(c *gin.Context) {
@@ -162,24 +162,24 @@ func (h *AcademicYearHandler) AssignMajors(c *gin.Context) {
 		MajorIDs []uint `json:"major_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "data tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "data tidak valid")
 		return
 	}
 	if err := h.s.AssignMajors(c.Request.Context(), uint(id), req.MajorIDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "jurusan berhasil dikaitkan ke angkatan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "jurusan berhasil dikaitkan ke angkatan", nil)
 }
 
 func (h *AcademicYearHandler) GetMajors(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	list, err := h.s.GetMajorsByYear(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data jurusan untuk angkatan", list)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data jurusan untuk angkatan", list)
 }
 
 func (h *AcademicYearHandler) AssignClasses(c *gin.Context) {
@@ -188,34 +188,34 @@ func (h *AcademicYearHandler) AssignClasses(c *gin.Context) {
 		ClassIDs []uint `json:"class_ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "data tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "data tidak valid")
 		return
 	}
 	if err := h.s.AssignClasses(c.Request.Context(), uint(id), req.ClassIDs); err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "kelas berhasil dikaitkan ke angkatan", nil)
+	helper.SuccessResponse(c, http.StatusOK, "kelas berhasil dikaitkan ke angkatan", nil)
 }
 
 func (h *AcademicYearHandler) GetClasses(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	list, err := h.s.GetClassesByYear(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil mengambil data kelas untuk angkatan", list)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil mengambil data kelas untuk angkatan", list)
 }
 
 func (h *AcademicYearHandler) GetDependencyInfo(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	info, err := h.s.GetDependencyInfo(c.Request.Context(), uint(id))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", info)
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", info)
 }
 
 func (h *AcademicYearHandler) CheckUnique(c *gin.Context) {
@@ -223,20 +223,20 @@ func (h *AcademicYearHandler) CheckUnique(c *gin.Context) {
 	excludeID, _ := strconv.ParseUint(c.Query("exclude_id"), 10, 32)
 
 	if yearStr == "" {
-		utils.ErrorResponse(c, http.StatusBadRequest, "year harus diisi")
+		helper.ErrorResponse(c, http.StatusBadRequest, "year harus diisi")
 		return
 	}
 	year, err := strconv.Atoi(yearStr)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusBadRequest, "format year tidak valid")
+		helper.ErrorResponse(c, http.StatusBadRequest, "format year tidak valid")
 		return
 	}
 
 	exists, err := h.s.CheckUnique(c.Request.Context(), year, uint(excludeID))
 	if err != nil {
-		utils.ErrorResponseRaw(c, http.StatusInternalServerError, err)
+		helper.ErrorResponseRaw(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	utils.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{"is_unique": !exists})
+	helper.SuccessResponse(c, http.StatusOK, "berhasil", gin.H{"is_unique": !exists})
 }

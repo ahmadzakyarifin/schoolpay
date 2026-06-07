@@ -217,9 +217,10 @@ func (r *notificationRepo) GetDetailedLogs(ctx context.Context, page, limit int,
 			base.Where(statusExpr+" = ?", status)
 		}
 	}
-	if channel == "whatsapp" {
+	switch channel {
+	case "whatsapp":
 		base.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'whatsapp'")
-	} else if channel == "email" {
+	case "email":
 		base.Where("LOWER(COALESCE(NULLIF(n.channel, ''), CASE WHEN n.whatsapp_id IS NOT NULL AND n.whatsapp_id != '' THEN 'whatsapp' ELSE 'email' END)) = 'email'")
 	}
 	if search != "" {

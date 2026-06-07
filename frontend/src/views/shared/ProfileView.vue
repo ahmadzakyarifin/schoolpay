@@ -174,7 +174,8 @@ const updatePassword = async () => {
   try {
     await axios.post('auth/change-password', {
       current_password: passwordData.value.current_password,
-      new_password: passwordData.value.new_password
+      password: passwordData.value.new_password,
+      confirm_password: passwordData.value.confirm_password
     })
     toast.success('Sukses', 'Password berhasil diperbarui. Silakan login ulang.')
     passwordData.value = { current_password: '', new_password: '', confirm_password: '' }

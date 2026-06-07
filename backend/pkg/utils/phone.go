@@ -2,6 +2,8 @@ package utils
 
 import (
 	"strings"
+
+	"github.com/nyaruka/phonenumbers"
 )
 
 // NormalizePhoneNumber standarizes phone numbers to international format (starting with country code, e.g., 62)
@@ -23,4 +25,13 @@ func NormalizePhoneNumber(phone string) string {
 	}
 
 	return p
+}
+
+// ValidatePhoneNumber memeriksa validitas nomor telepon menggunakan standard libphonenumber Google
+func ValidatePhoneNumber(phone string) bool {
+	num, err := phonenumbers.Parse("+"+phone, "")
+	if err != nil {
+		return false
+	}
+	return phonenumbers.IsValidNumber(num)
 }

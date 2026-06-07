@@ -12,7 +12,6 @@ import {
   LayoutGrid as LayoutIcon,
   Clock as ClockIcon,
   Calendar as CalendarIcon,
-  Search as SearchIcon,
   ArrowRight as ArrowIcon,
   FileSpreadsheet as ExcelIcon,
   Printer as PrintIcon,
@@ -79,7 +78,6 @@ const filters = reactive({
   academic_year_id: '',
   class_id: '',
   major_id: '',
-  search: '',
   ref_date: new Date().toISOString().substring(0, 10),
   start_date: '',
   end_date: ''
@@ -90,7 +88,6 @@ const tempFilters = reactive({
   academic_year_id: '',
   class_id: '',
   major_id: '',
-  search: '',
   ref_date: new Date().toISOString().substring(0, 10),
   start_date: '',
   end_date: ''
@@ -150,7 +147,6 @@ const resetFilters = () => {
     academic_year_id: '',
     class_id: '',
     major_id: '',
-    search: '',
     ref_date: now.toISOString().substring(0, 10),
     start_date: '',
     end_date: ''
@@ -554,6 +550,51 @@ watch(() => tempFilters.period, (newP) => {
   }
 })
 
+const filteredMajors = computed(() => {
+  let result = majors.value || []
+  if (tempFilters.academic_year_id) {
+    const ayId = Number(tempFilters.academic_year_id)
+    result = result.filter(m => m.year_ids?.includes(ayId))
+  }
+  return result
+})
+
+const filteredClasses = computed(() => {
+  let result = classes.value || []
+  if (tempFilters.academic_year_id) {
+    const ayId = Number(tempFilters.academic_year_id)
+    result = result.filter(c => c.academic_year_ids?.includes(ayId))
+  }
+  if (tempFilters.major_id) {
+    result = result.filter(c => c.major_id === Number(tempFilters.major_id))
+  }
+  return result
+})
+
+watch(() => tempFilters.major_id, (newMajor) => {
+  if (newMajor) {
+    const majorIdNum = Number(newMajor)
+    const selectedClass = classes.value.find(c => c.id === Number(tempFilters.class_id))
+    if (selectedClass && selectedClass.major_id !== majorIdNum) {
+      tempFilters.class_id = ''
+    }
+  }
+})
+
+watch(() => tempFilters.class_id, (newClass) => {
+  if (newClass) {
+    const selectedClass = classes.value.find(c => c.id === Number(newClass))
+    if (selectedClass && selectedClass.major_id) {
+      tempFilters.major_id = String(selectedClass.major_id)
+    }
+  }
+})
+
+watch(() => tempFilters.academic_year_id, () => {
+  tempFilters.major_id = ''
+  tempFilters.class_id = ''
+})
+
 onMounted(async () => {
   isMounted.value = true
   await Promise.all([fetchYears(), fetchClassesMajors(), fetchStats()])
@@ -573,22 +614,6 @@ onUnmounted(() => {
     <!-- 1. Filters — Inline in Navbar -->
     <Teleport v-if="isMounted" to="#header-actions-target">
       <div class="flex items-end gap-2 font-inter pr-2">
-
-        <!-- Search -->
-        <div class="flex flex-col gap-1 min-w-[190px]">
-          <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Cari</label>
-          <div class="relative">
-            <SearchIcon class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300" />
-            <input
-              v-model="tempFilters.search"
-              @keyup.enter="applyFilters"
-              @change="applyFilters"
-              type="text"
-              placeholder="Siswa, NIS, tagihan..."
-              class="h-8 w-full pl-8 pr-3 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 hover:border-indigo-300 transition-all"
-            />
-          </div>
-        </div>
 
         <!-- Periode -->
         <div class="flex flex-col gap-1">
@@ -656,10 +681,10 @@ onUnmounted(() => {
         <div class="flex flex-col gap-1">
           <label class="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Jurusan</label>
           <div class="relative">
-            <select v-model="tempFilters.major_id" @change="applyFilters"
-              class="h-8 pl-3 pr-7 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 shadow-sm appearance-none cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all">
+            <select v-model="tempFilters.major_id" @change="applyFilters" :disabled="!!tempFilters.class_id"
+              class="h-8 pl-3 pr-7 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 shadow-sm appearance-none cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
               <option value="">Semua</option>
-              <option v-for="m in majors" :key="m.id" :value="m.id">{{ m.name }}</option>
+              <option v-for="m in filteredMajors" :key="m.id" :value="m.id">{{ m.name }}</option>
             </select>
             <ChevronDownIcon class="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -672,7 +697,7 @@ onUnmounted(() => {
             <select v-model="tempFilters.class_id" @change="applyFilters"
               class="h-8 pl-3 pr-7 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 shadow-sm appearance-none cursor-pointer hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all">
               <option value="">Semua</option>
-              <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+              <option v-for="c in filteredClasses" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
             <ChevronDownIcon class="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -697,8 +722,8 @@ onUnmounted(() => {
     <!-- 2. Summary Cards Grid (5 Cards in 1 Row) -->
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-6">
       <div v-for="(v, k) in {
-        students: { icon: StudentIcon, label: 'Siswa Terdaftar', color: 'indigo', val: stats.students?.total_all || 0 },
-        users: { icon: UsersIcon, label: 'Total Pengguna', color: 'blue', val: stats.users?.total || 0 },
+        students: { icon: StudentIcon, label: 'Total Siswa', color: 'indigo', val: stats.students?.total || 0 },
+        users: { icon: UsersIcon, label: 'Total Pengguna', color: 'blue', val: stats.users?.new_this_period || 0 },
         unpaid_amount: { icon: AlertIcon, label: 'Tagihan Menunggak', color: 'rose', isP: true, val: stats.unpaid_amount },
         paid_amount: { icon: WalletIcon, label: 'Pemasukan Pembayaran', color: 'emerald', isP: true, val: stats.paid_amount },
         paid_count: { icon: BillIcon, label: 'Total Transaksi', color: 'indigo', val: stats.paid_count }

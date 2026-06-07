@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { 
   Filter as FilterIcon, 
   X as CloseIcon, 
@@ -52,6 +52,27 @@ const onYearChange = () => {
 const onMajorChange = () => {
   props.filters.class_id = ''
 }
+
+watch(() => props.filters.major_id, (newMajor) => {
+  if (newMajor) {
+    const majorIdNum = Number(newMajor)
+    const selectedClass = props.academicFilters.classes?.find(c => c.id === Number(props.filters.class_id))
+    if (selectedClass && selectedClass.major_id !== majorIdNum) {
+      props.filters.class_id = ''
+    }
+  }
+})
+
+watch(() => props.filters.class_id, (newClass) => {
+  if (newClass) {
+    const selectedClass = props.academicFilters.classes?.find(c => c.id === Number(newClass))
+    if (selectedClass && selectedClass.major_id) {
+      props.filters.major_id = String(selectedClass.major_id)
+    }
+  }
+})
+
+
 
 </script>
 
@@ -115,7 +136,7 @@ const onMajorChange = () => {
         <div class="flex flex-col gap-2">
           <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Jurusan</label>
           <div class="relative">
-            <select v-model="filters.major_id" @change="onMajorChange" class="w-full py-2.5 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-xs text-slate-700 pr-8 shadow-sm">
+            <select v-model="filters.major_id" @change="onMajorChange" :disabled="!!filters.class_id" class="w-full py-2.5 px-4 bg-slate-50 border border-slate-100 rounded-xl appearance-none focus:bg-white focus:ring-2 focus:ring-indigo-50 focus:border-indigo-500 outline-none transition-all font-bold text-xs text-slate-700 pr-8 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
               <option value="">Semua Jurusan</option>
               <option v-for="j in filteredMajors" :key="j.id" :value="j.id">{{ j.name }}</option>
             </select>

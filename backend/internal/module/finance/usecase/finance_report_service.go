@@ -8,7 +8,7 @@ import (
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
-	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 	"github.com/xuri/excelize/v2"
 )
@@ -34,7 +34,7 @@ func (s *financeReportService) GetArrears(ctx context.Context, page, limit int, 
 
 func (s *financeReportService) ExportTrendExcel(ctx context.Context, start, end *time.Time, interval string, academicYear int, classID, majorID uint) ([]byte, error) {
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		newVals := map[string]interface{}{"interval": interval, "academic_year": academicYear, "class_id": classID, "major_id": majorID}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "EXPORT_TREND_EXCEL", "finance_reports", 0, nil, newVals, ipAddress, userAgent)
 	}

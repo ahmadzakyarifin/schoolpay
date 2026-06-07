@@ -11,11 +11,11 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
 	auditusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/audit/usecase"
 	financerepo "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/repository"
-	notificationdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/domain"
 	notificationrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/notification/repository"
 	userauthdomain "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/uptrace/bun"
 	"github.com/xuri/excelize/v2"
 )
@@ -54,13 +54,6 @@ type studentService struct {
 	cfg       *config.Config
 	billRepo  financerepo.StudentBillRepo
 	audit     auditusecase.AuditLogService
-	jobChan   chan studentNotifyJob
-}
-
-type studentNotifyJob struct {
-	user        *userauthdomain.User
-	studentName string
-	rawPassword string
 }
 
 func studentAuditValues(student *domain.Student) map[string]interface{} {
@@ -99,7 +92,7 @@ func studentAuditValues(student *domain.Student) map[string]interface{} {
 }
 
 func NewStudentService(db *bun.DB, repo repository.StudentRepo, userRepo userauthrepo.UserRepo, authRepo userauthrepo.AuthRepo, msg utils.Messenger, noti notificationrepo.NotificationRepo, ay repository.AcademicYearRepo, jur repository.MajorRepo, cls repository.ClassRepo, billRepo financerepo.StudentBillRepo, cfg *config.Config, audit auditusecase.AuditLogService) StudentService {
-	s := &studentService{
+	return &studentService{
 		db:        db,
 		repo:      repo,
 		userRepo:  userRepo,
@@ -112,12 +105,7 @@ func NewStudentService(db *bun.DB, repo repository.StudentRepo, userRepo useraut
 		billRepo:  billRepo,
 		cfg:       cfg,
 		audit:     audit,
-		jobChan:   make(chan studentNotifyJob, 100),
 	}
-	for i := 0; i < 5; i++ {
-		go s.notificationWorker()
-	}
-	return s
 }
 
 func (s *studentService) GetPaginated(ctx context.Context, page, limit int, search, filter, status string, entryYear int, classID, majorID uint, sort string) ([]domain.Student, int, error) {
@@ -257,7 +245,7 @@ func (s *studentService) Create(ctx context.Context, student *domain.Student) er
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			_ = s.audit.Log(ctx, tx, userID, userName, role, "CREATE", "students", student.ID, nil, studentAuditValues(student), ipAddress, userAgent)
 		}
 		return nil
@@ -360,7 +348,7 @@ func (s *studentService) Update(ctx context.Context, student *domain.Student) er
 		}
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			_ = s.audit.Log(ctx, tx, userID, userName, role, "UPDATE", "students", student.ID, studentAuditValues(existing), studentAuditValues(student), ipAddress, userAgent)
 		}
 
@@ -383,7 +371,7 @@ func (s *studentService) Delete(ctx context.Context, id uint) error {
 	}
 
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"status": existing.Status}
 		newVals := map[string]interface{}{"status": "deleted"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "DELETE", "students", id, oldVals, newVals, ipAddress, userAgent)
@@ -398,7 +386,7 @@ func (s *studentService) GetByID(ctx context.Context, id uint) (*domain.Student,
 func (s *studentService) ToggleStatus(ctx context.Context, id uint) error {
 	existing, _ := s.repo.FindByID(ctx, id)
 	if existing != nil && s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"status": existing.Status}
 		newStatus := "inactive"
 		if existing.Status != "active" {
@@ -536,7 +524,7 @@ func (s *studentService) BulkGraduate(ctx context.Context, classID uint, student
 			_, _ = tx.NewUpdate().Table("student_classes").Set("is_active = 0").Where("student_id IN (?)", bun.In(graduateIDs)).Exec(ctx)
 
 			if s.audit != nil {
-				userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+				userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 				for _, id := range graduateIDs {
 					oldVals := map[string]interface{}{"status": "active"}
 					newVals := map[string]interface{}{"status": "graduated"}
@@ -612,7 +600,7 @@ func (s *studentService) BulkPromote(ctx context.Context, sourceClassID, targetC
 			}
 
 			if s.audit != nil {
-				userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+				userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 				for _, id := range promoteIDs {
 					oldVals := map[string]interface{}{"class_id": sourceClassID}
 					newVals := map[string]interface{}{"class_id": targetClassID}
@@ -649,7 +637,7 @@ func (s *studentService) BulkDelete(ctx context.Context, ids []uint) error {
 		_, _ = tx.NewUpdate().Table("student_classes").Set("is_active = 0").Where("student_id IN (?) AND is_active = 1", bun.In(ids)).Exec(ctx)
 
 		if s.audit != nil {
-			userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+			userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 			for _, id := range ids {
 				oldVals := map[string]interface{}{"status": "active"}
 				newVals := map[string]interface{}{"status": "deleted"}
@@ -691,7 +679,7 @@ func (s *studentService) GetDependencyInfo(ctx context.Context, id uint) (map[st
 
 func (s *studentService) Restore(ctx context.Context, id uint) error {
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		oldVals := map[string]interface{}{"status": "deleted"}
 		newVals := map[string]interface{}{"status": "active"}
 		_ = s.audit.Log(ctx, s.db, userID, userName, role, "RESTORE", "students", id, oldVals, newVals, ipAddress, userAgent)
@@ -701,7 +689,7 @@ func (s *studentService) Restore(ctx context.Context, id uint) error {
 
 func (s *studentService) BulkRestore(ctx context.Context, ids []uint) error {
 	if s.audit != nil {
-		userID, userName, role, ipAddress, userAgent := utils.GetAuditMeta(ctx)
+		userID, userName, role, ipAddress, userAgent := helper.GetAuditMeta(ctx)
 		for _, id := range ids {
 			oldVals := map[string]interface{}{"status": "deleted"}
 			newVals := map[string]interface{}{"status": "active"}
@@ -711,59 +699,7 @@ func (s *studentService) BulkRestore(ctx context.Context, ids []uint) error {
 	return s.repo.BulkRestore(ctx, ids)
 }
 
-func (s *studentService) notificationWorker() {
-	ctx := context.Background()
-	for job := range s.jobChan {
-		if !job.user.IsActive {
-			token := utils.GenerateUUID()
-			expiry := time.Now().Add(24 * 7 * time.Hour)
-			_ = s.authRepo.SaveAuthToken(ctx, job.user.ID, token, "activation", expiry)
-			link := fmt.Sprintf("%s/activate?token=%s", strings.TrimSuffix(s.cfg.FrontendURL, "/"), token)
-			passInfo := ""
-			if job.rawPassword != "" {
-				passInfo = fmt.Sprintf("\n• Password sementara: *%s*", job.rawPassword)
-			}
-			msg := strings.Join([]string{
-				"📢 *AKTIVASI AKUN SCHOOLPAY*",
-				"",
-				fmt.Sprintf("Halo *%s*,", job.user.Name),
-				"",
-				"Akun Anda telah didaftarkan dengan rincian:",
-				"",
-				fmt.Sprintf("• Siswa: *%s*", job.studentName),
-				fmt.Sprintf("• Link aktivasi: %s%s", link, passInfo),
-				"",
-				"Tautan berlaku selama 7 hari.",
-				"Silakan hubungi Admin Sekolah jika mengalami kendala.",
-				"",
-				"Terima kasih.",
-			}, "\n")
-			status := "sent"
-			var deliveryErr *string
-			var whatsappID *string
-			if waID, err := s.msg.SendWhatsApp(job.user.PhoneNumber, msg); err != nil {
-				status = "failed"
-				deliveryErr = utils.StringPtr(err.Error())
-			} else if waID != "" {
-				whatsappID = utils.StringPtr(waID)
-			}
-			if whatsappID == nil {
-				whatsappID = utils.StringPtr(fmt.Sprintf("local-wa-%d-%d", job.user.ID, time.Now().UnixNano()))
-			}
-
-			_ = s.notiRepo.Create(ctx, s.db, &notificationdomain.Notification{
-				UserID:         job.user.ID,
-				Title:          "Aktivasi Akun SchoolPay",
-				Message:        msg,
-				Type:           "auth",
-				Channel:        "whatsapp",
-				WhatsappID:     whatsappID,
-				DeliveryStatus: status,
-				DeliveryError:  deliveryErr,
-			})
-		}
-	}
-}
+// notificationWorker removed as background jobs are handled by global database cron job.
 
 func (s *studentService) CheckUnique(ctx context.Context, field string, value string, excludeID uint) (bool, error) {
 	value = strings.TrimSpace(value)
