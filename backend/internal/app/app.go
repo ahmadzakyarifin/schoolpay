@@ -14,6 +14,7 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/internal/websocket"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/uptrace/bun"
@@ -27,10 +28,18 @@ type App struct {
 	Hub       *websocket.Hub
 }
 
-func NewApp(database *bun.DB, appConfig *config.Config) *App {
+func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Client) *App {
 	if appConfig.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	// Inisialisasi RateLimiter dengan Redis (atau Memory fallback)
+	if redisClient != nil {
+		if rl, err := middleware.NewRedisRateLimiter(redisClient); err == nil {
+			middleware.SetDefaultRateLimiter(rl)
+		}
+	}
+
 	routerEngine := gin.Default()
 	routerEngine.Use(middleware.CORSMiddleware(appConfig.AppEnv, appConfig.FrontendURL))
 	routerEngine.Static("/uploads", "./public/uploads")
@@ -62,7 +71,7 @@ func NewApp(database *bun.DB, appConfig *config.Config) *App {
 	// Endpoint realtime global. Route ini sengaja ada di app karena dipakai
 	// lintas role, bukan milik modul admin/parent/finance tertentu.
 	websocketGroup := apiGroup.Group("")
-	websocketGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository))
+	websocketGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository, redisClient))
 	websocketGroup.Use(middleware.RoleMiddleware("admin", "parent"))
 	websocketGroup.Use(middleware.RateLimitPerUser("websocket", 60))
 	// WebSocket dipakai untuk push event realtime dari server ke frontend,
@@ -89,10 +98,10 @@ func NewApp(database *bun.DB, appConfig *config.Config) *App {
 
 	// Daftarkan router fitur. Detail endpoint masing-masing fitur berada
 	// di package router terkait agar app.go tetap mudah dibaca.
-	auth.RouterAuthSetup(apiGroup, appInstance.DB, &appInstance.Cfg, messenger, sharedFeatures.UserRepository)
+	auth.RouterAuthSetup(apiGroup, appInstance.DB, &appInstance.Cfg, messenger, sharedFeatures.UserRepository, redisClient)
 
 	adminGroup := apiGroup.Group("")
-	adminGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository))
+	adminGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository, redisClient))
 	adminGroup.Use(middleware.RoleMiddleware("admin"))
 	adminGroup.Use(middleware.RateLimitPerUser("admin_private", 600))
 	admin.SetupAdminRoutes(
@@ -109,12 +118,14 @@ func NewApp(database *bun.DB, appConfig *config.Config) *App {
 	)
 
 	parentGroup := apiGroup.Group("/parent")
-	parentGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository))
+	parentGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository, redisClient))
 	parentGroup.Use(middleware.RoleMiddleware("parent"))
 	parentGroup.Use(middleware.RateLimitPerUser("parent_private", 300))
 	parent.SetupParentRoutes(parentGroup, appInstance.DB, &appInstance.Cfg, messenger, appInstance.Hub)
 
-	financerouter.SetupFinanceRoutes(apiGroup, appConfig.JWTSecret, sharedFeatures.UserRepository, sharedFeatures.PaymentService, sharedFeatures.StudentBillService)
+	// Update pemanggilan SetupFinanceRoutes agar menggunakan AuthMiddleware dengan redisClient secara konsisten (dilakukan di setup router masing-masing)
+	// Karena SetupFinanceRoutes menggunakan middleware package, ia akan memanggil AuthMiddleware(jwtSecret, userRepo) yang sekarang butuh redisClient, maka kita perlu memperbarui parameter finance router juga.
+	financerouter.SetupFinanceRoutes(apiGroup, appConfig.JWTSecret, sharedFeatures.UserRepository, sharedFeatures.PaymentService, sharedFeatures.StudentBillService, redisClient)
 
 	// Webhook memakai root group karena callback gateway biasanya tidak berada
 	// di bawah /api dan punya mekanisme autentikasi/verifikasi sendiri.

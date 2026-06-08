@@ -364,6 +364,68 @@ Alih-alih menyatukan semua parameter dalam satu key, kita menerapkan **beberapa 
 
 ---
 
+## 🔐 Arsitektur Keamanan Autentikasi (JWT, Access & Refresh Token, & Redis Blacklist)
+
+Aplikasi ini menggunakan pendekatan **Hybrid Stateless/Stateful Token Management** dengan standar keamanan industri tingkat tinggi untuk mengamankan data transaksi keuangan sekolah. Berikut adalah siklus hidup autentikasi dan penanganan keamanannya:
+
+### 1. Alur Inisiasi & Penyimpanan Token (Login Phase)
+Saat user melakukan login:
+* **Backend** melakukan verifikasi kredensial. Jika sukses, Backend menerbitkan dua token:
+  * **Access Token (JWT):** Kunci masuk jangka pendek (misal: 30 menit) bersifat stateless.
+  * **Refresh Token:** Kunci perpanjangan sesi jangka panjang (7 hari) yang dicatat di database MariaDB.
+* **Pengiriman ke Client:** Access Token dikirim di JSON response body, sedangkan Refresh Token disisipkan ke dalam **HttpOnly Secure Cookie** dengan kebijakan `SameSite: Lax`.
+
+### 2. Analisis Keamanan Penyimpanan Token di Browser
+Untuk meminimalkan resiko peretasan, penyimpanan token di sisi frontend dibagi secara ketat:
+
+| Metode Penyimpanan | Kerentanan XSS (Script Theft) | Penjelasan |
+| :--- | :---: | :--- |
+| **`localStorage`** | 🔴 **Sangat Rentan** | Token bisa dibaca secara langsung oleh JavaScript browser lewat `localStorage.getItem()`. Jika web terinfeksi script berbahaya (XSS), token bisa dicuri secara massal. |
+| **`sessionStorage`** | 🔴 **Sangat Rentan** | Memiliki tingkat risiko pencurian yang sama dengan `localStorage` selama tab browser masih aktif. |
+| **Variabel Pinia (In-Memory State)** | 🟢 **Sangat Aman** | Access Token disimpan di dalam variabel memori runtime JavaScript yang terisolasi. Script XSS tidak dapat membaca data ini secara langsung. |
+
+> [!TIP]
+> **Mengatasi Data Hilang Saat Page Refresh (Silent Refresh):**
+> Karena variabel memori Pinia akan terhapus saat halaman di-refresh, frontend secara otomatis memanggil API `/auth/refresh` di background. Browser secara aman mengirimkan Refresh Token lewat HttpOnly Cookie (yang kebal XSS), lalu backend merespons dengan memberikan Access Token baru untuk disimpan kembali ke dalam memori state Pinia.
+
+### 3. Skenario Kebocoran Token (Hacker Threat Model)
+Mengapa kita tetap membutuhkan **Redis Blacklist** padahal token sudah disimpan dengan aman di memori Pinia?
+
+```
+Skenario Ancaman:
+1. Menit 05: Hacker berhasil mencuri Access Token (misal via jaringan tidak aman/MITM).
+2. Menit 10: User asli menekan tombol "Logout" -> token terhapus di Pinia frontend.
+3. Menit 15: Hacker menembak API backend menggunakan token curian via Postman/cURL.
+4. Hasil Tanpa Redis: Backend tetap memproses request hacker tersebut karena tanda tangan JWT masih valid secara matematis (stateless) dan belum kedaluwarsa.
+```
+
+### 4. Alur Logout Aman dengan Redis Blacklist
+Untuk memecahkan masalah keamanan di atas, aplikasi menerapkan mekanisme **Redis Blacklist** saat proses logout dijalankan:
+
+```
+[User Logout]
+      |
+      +---> 1. Frontend: Hapus variabel Pinia & Cookie.
+      +---> 2. Frontend: Panggil API POST /auth/logout
+      |
+      +---> 3. Backend (Go):
+               - Hapus Refresh Token di database MariaDB.
+               - Ambil Access Token dari request header.
+               - Hitung sisa masa aktif token (misal: sisa 20 menit).
+               - Simpan token ke Redis: Key -> "blacklist:<token>", TTL -> 20 menit.
+```
+
+Setiap request API berikutnya yang melewati **AuthMiddleware** akan divalidasi dengan alur:
+1. Memverifikasi tanda tangan digital JWT secara matematis (cepat, tanpa sentuh DB).
+2. **Cek ke Redis:** *"Apakah token ini ada di blacklist?"* (Proses pencarian di RAM Redis sangat cepat, `< 1ms`).
+3. Jika terdaftar di Redis Blacklist, request hacker langsung ditolak dengan status **`401 Unauthorized`**.
+4. Setelah 20 menit berlalu, Redis akan otomatis menghapus key tersebut via fitur TTL untuk menghemat penggunaan RAM.
+
+### 5. Rotasi Refresh Token (*Refresh Token Rotation*)
+Untuk mencegah penyalahgunaan session, sistem menerapkan rotasi refresh token di dalam transaksi database (`RunInTx`):
+* Setiap kali token di-refresh, token lama dinonaktifkan dan token baru diterbitkan. Jika penyerang mencoba memakai kembali refresh token lama, sistem akan mendeteksi pelanggaran tersebut karena token tersebut sudah tidak terdaftar aktif di database.
+
+---
 
 ## 📌 Ringkasan Eksekutif
 

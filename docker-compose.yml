@@ -162,6 +162,8 @@ services:
         condition: service_completed_successfully
       waha:
         condition: service_healthy
+      redis:
+        condition: service_healthy
         
     # Mengirim seluruh variabel lingkungan dari file .env ke dalam aplikasi Go
     environment:
@@ -189,8 +191,27 @@ services:
       - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY}
       - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY}
       - MIDTRANS_IS_SANDBOX=${MIDTRANS_IS_SANDBOX}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASS=${REDIS_PASS}
+
+  # REDIS SERVICE
+  redis:
+    image: redis:alpine
+    container_name: schoolpay-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 # VOLUMES DECLARATION
-# Mendeklarasikan volume bernama 'mariadb_data' yang akan dikelola oleh Docker Engine
+# Mendeklarasikan volume yang dikelola oleh Docker Engine
 volumes:
   mariadb_data:
+  redis_data:

@@ -11,17 +11,18 @@ import (
 	authusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 )
 
-func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg utils.Messenger, userRepo authrepo.UserRepo) {
+func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg utils.Messenger, userRepo authrepo.UserRepo, redisClient *redis.Client) {
 	authRepo := authrepo.NewAuthRepo(db)
 
 	auditRepo := auditrepo.NewAuditLogRepo(db)
 	auditService := auditusecase.NewAuditLogService(auditRepo)
 
 	authService := authusecase.NewAuthService(authRepo, msg, auditService)
-	authHandler := authhandler.NewAuthHandler(authService, cfg)
+	authHandler := authhandler.NewAuthHandler(authService, cfg, redisClient)
 
 	studentRepo := academicrepo.NewStudentRepo(db)
 	profileHandler := authhandler.NewProfileHandler(db, userRepo, studentRepo, auditService)
@@ -47,7 +48,7 @@ func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg uti
 
 	// Secured auth endpoints
 	authSecured := g.Group("/auth")
-	authSecured.Use(middleware.AuthMiddleware(cfg.JWTSecret, userRepo))
+	authSecured.Use(middleware.AuthMiddleware(cfg.JWTSecret, userRepo, redisClient))
 	authSecured.Use(middleware.RateLimitPerUser("auth_private", 300))
 	{
 		authSecured.GET("/me", profileHandler.Me)

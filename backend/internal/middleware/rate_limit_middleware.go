@@ -12,129 +12,259 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/ulule/limiter/v3"
 	"github.com/ulule/limiter/v3/drivers/store/memory"
+	redisstore "github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-var globalStore = memory.NewStoreWithOptions(limiter.StoreOptions{
-	Prefix:          "rate_limit",
-	CleanUpInterval: limiter.DefaultCleanUpInterval,
-})
+const (
+	ByIP     = "ip"
+	ByDevice = "device"
+	ByEmail  = "email"
+	ByUser   = "user"
+)
+
+type Rule struct {
+	Kind   string
+	Limit  int64
+	Period time.Duration
+}
+
+type RateLimiter struct {
+	store limiter.Store
+}
 
 type emailPayload struct {
 	Email string `json:"email"`
 }
 
-// Fase sebelum login / publik: saringan bertingkat IP -> device -> email.
-func RateLimitAuthSaringan(scope string, target string, maxRequests int64) gin.HandlerFunc {
-	if maxRequests < 1 {
-		maxRequests = 1
-	}
-	instance := limiter.New(globalStore, limiter.Rate{Period: time.Minute, Limit: maxRequests})
+// Development / lokal / 1 instance.
+func NewMemoryRateLimiter() *RateLimiter {
+	store := memory.NewStoreWithOptions(limiter.StoreOptions{
+		Prefix:          "schoolpay_rate_limit",
+		CleanUpInterval: limiter.DefaultCleanUpInterval,
+	})
 
-	return func(c *gin.Context) {
-		var key string
-
-		switch target {
-		case "ip":
-			key = "ip:" + c.ClientIP()
-
-		case "device":
-			deviceID := strings.TrimSpace(c.GetHeader("X-Device-ID"))
-			if deviceID == "" {
-				c.Next()
-				return
-			}
-			if len(deviceID) > 80 {
-				deviceID = deviceID[:80]
-			}
-			key = "device:" + shortHash(deviceID)
-
-		case "email":
-			var payload emailPayload
-			if err := c.ShouldBindBodyWithJSON(&payload); err != nil {
-				c.Next()
-				return
-			}
-			if body, exists := c.Get(gin.BodyBytesKey); exists {
-				if bodyBytes, ok := body.([]byte); ok {
-					c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-				}
-			}
-
-			email := strings.ToLower(strings.TrimSpace(payload.Email))
-			if email == "" {
-				c.Next()
-				return
-			}
-			key = "email:" + shortHash(email)
-
-		default:
-			c.Next()
-			return
-		}
-
-		executeLimit(c, instance, scope+":"+key)
-	}
+	return &RateLimiter{store: store}
 }
 
-// Fase setelah login: selalu kunci berdasarkan user_id dari AuthMiddleware.
-func RateLimitPerUser(scope string, maxRequests int64) gin.HandlerFunc {
-	if maxRequests < 1 {
-		maxRequests = 1
+// Production / Redis / multi-instance ready.
+func NewRedisRateLimiter(redisClient *redis.Client) (*RateLimiter, error) {
+	store, err := redisstore.NewStoreWithOptions(redisClient, limiter.StoreOptions{
+		Prefix: "schoolpay_rate_limit",
+	})
+	if err != nil {
+		return nil, err
 	}
-	instance := limiter.New(globalStore, limiter.Rate{Period: time.Minute, Limit: maxRequests})
+
+	return &RateLimiter{store: store}, nil
+}
+
+// Rule builder.
+func IP(limit int64, period time.Duration) Rule {
+	return Rule{Kind: ByIP, Limit: limit, Period: period}
+}
+
+func Device(limit int64, period time.Duration) Rule {
+	return Rule{Kind: ByDevice, Limit: limit, Period: period}
+}
+
+func Email(limit int64, period time.Duration) Rule {
+	return Rule{Kind: ByEmail, Limit: limit, Period: period}
+}
+
+func User(limit int64, period time.Duration) Rule {
+	return Rule{Kind: ByUser, Limit: limit, Period: period}
+}
+
+// Use adalah middleware utama.
+// Semua rule dicek dulu. Kalau salah satu sudah limit, request ditolak.
+func (r *RateLimiter) Use(scope string, rules ...Rule) gin.HandlerFunc {
+	if scope == "" {
+		scope = "global"
+	}
+
+	limiters := make([]*limiter.Limiter, len(rules))
+
+	for i, rule := range rules {
+		if rule.Limit < 1 {
+			rule.Limit = 1
+		}
+		if rule.Period <= 0 {
+			rule.Period = time.Minute
+		}
+
+		limiters[i] = limiter.New(r.store, limiter.Rate{
+			Limit:  rule.Limit,
+			Period: rule.Period,
+		})
+	}
 
 	return func(c *gin.Context) {
-		userID, exists := c.Get("user_id")
-		if !exists || strings.TrimSpace(fmt.Sprint(userID)) == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+		path := strings.ReplaceAll(c.FullPath(), "/", ":")
+		if path == "" {
+			path = strings.ReplaceAll(c.Request.URL.Path, "/", ":")
+		}
+		if path == "" || path == ":" {
+			path = "unknown_path"
+		}
+
+		email := ""
+		if needsEmail(rules) {
+			var payload emailPayload
+			if err := c.ShouldBindBodyWithJSON(&payload); err == nil {
+				email = strings.ToLower(strings.TrimSpace(payload.Email))
+			}
+			restoreBody(c)
+		}
+
+		var blockedReason string
+		var resetAt int64
+
+		for i, rule := range rules {
+			key, ok, unauthorized := makeKey(c, scope, path, rule.Kind, email)
+			if unauthorized {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"status":  false,
+					"message": "Akses ditolak. Sesi login tidak valid.",
+					"data":    nil,
+				})
+				return
+			}
+			if !ok {
+				continue
+			}
+
+			info, err := limiters[i].Get(c.Request.Context(), key)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"status":  false,
+					"message": "Gagal memproses rate limit.",
+					"data":    nil,
+				})
+				return
+			}
+
+			c.Header("X-RateLimit-"+rule.Kind+"-Limit", strconv.FormatInt(info.Limit, 10))
+			c.Header("X-RateLimit-"+rule.Kind+"-Remaining", strconv.FormatInt(info.Remaining, 10))
+			c.Header("X-RateLimit-"+rule.Kind+"-Reset", strconv.FormatInt(info.Reset, 10))
+
+			if info.Reached {
+				blockedReason = rule.Kind
+				if info.Reset > resetAt {
+					resetAt = info.Reset
+				}
+			}
+		}
+
+		if blockedReason != "" {
+			retryAfter := int(resetAt - time.Now().Unix())
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"status":  false,
-				"message": "Akses ditolak. Sesi login tidak valid.",
-				"data":    nil,
+				"message": "Terlalu banyak request. Mohon tunggu beberapa saat.",
+				"data": gin.H{
+					"reason":              blockedReason,
+					"retry_after_seconds": retryAfter,
+				},
 			})
 			return
 		}
 
-		executeLimit(c, instance, scope+":user:"+fmt.Sprint(userID))
+		c.Next()
 	}
 }
 
-func executeLimit(c *gin.Context, instance *limiter.Limiter, fullKey string) {
-	info, err := instance.Get(c.Request.Context(), fullKey)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status":  false,
-			"message": "Gagal memproses sistem keamanan rate limit.",
-			"data":    nil,
-		})
-		return
-	}
+func makeKey(c *gin.Context, scope, path, kind, email string) (string, bool, bool) {
+	switch kind {
+	case ByIP:
+		return scope + ":" + path + ":ip:" + c.ClientIP(), true, false
 
-	c.Header("X-RateLimit-Limit", strconv.FormatInt(info.Limit, 10))
-	c.Header("X-RateLimit-Remaining", strconv.FormatInt(info.Remaining, 10))
-	c.Header("X-RateLimit-Reset", strconv.FormatInt(info.Reset, 10))
-
-	if info.Reached {
-		retryAfter := int(info.Reset - time.Now().Unix())
-		if retryAfter < 1 {
-			retryAfter = 1
+	case ByDevice:
+		deviceID := strings.TrimSpace(c.GetHeader("X-Device-ID"))
+		if deviceID == "" {
+			deviceID = "missing:" + c.GetHeader("User-Agent") + ":" + c.ClientIP()
 		}
+		if len(deviceID) > 120 {
+			deviceID = deviceID[:120]
+		}
+		return scope + ":" + path + ":device:" + hash(deviceID), true, false
 
-		c.Header("Retryk-After", strconv.Itoa(retryAfter))
-		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-			"status":  false,
-			"message": "Terlalu banyak request. Mohon tunggu beberapa saat.",
-			"data":    gin.H{"retry_after_seconds": retryAfter},
-		})
+	case ByEmail:
+		if email == "" {
+			return "", false, false
+		}
+		return scope + ":" + path + ":email:" + hash(email), true, false
+
+	case ByUser:
+		userID, ok := c.Get("user_id")
+		if !ok || strings.TrimSpace(fmt.Sprint(userID)) == "" {
+			return "", false, true
+		}
+		return scope + ":" + path + ":user:" + fmt.Sprint(userID), true, false
+
+	default:
+		return "", false, false
+	}
+}
+
+func needsEmail(rules []Rule) bool {
+	for _, rule := range rules {
+		if rule.Kind == ByEmail {
+			return true
+		}
+	}
+	return false
+}
+
+func restoreBody(c *gin.Context) {
+	body, ok := c.Get(gin.BodyBytesKey)
+	if !ok {
 		return
 	}
 
-	c.Next()
+	bodyBytes, ok := body.([]byte)
+	if !ok {
+		return
+	}
+
+	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 }
 
-func shortHash(value string) string {
-	hash := sha256.Sum256([]byte(value))
+func hash(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])[:16]
+}
 
-	return hex.EncodeToString(hash[:])[:16]
+// Compatibility layer for global/singleton usage to avoid refactoring all routers.
+var defaultRateLimiter = NewMemoryRateLimiter()
+
+func SetDefaultRateLimiter(rl *RateLimiter) {
+	if rl != nil {
+		defaultRateLimiter = rl
+	}
+}
+
+func RateLimitAuthSaringan(scope string, target string, maxRequests int64) gin.HandlerFunc {
+	var rule Rule
+	switch target {
+	case "ip":
+		rule = IP(maxRequests, time.Minute)
+	case "device":
+		rule = Device(maxRequests, time.Minute)
+	case "email":
+		rule = Email(maxRequests, time.Minute)
+	default:
+		rule = IP(maxRequests, time.Minute)
+	}
+	return defaultRateLimiter.Use(scope, rule)
+}
+
+func RateLimitPerUser(scope string, maxRequests int64) gin.HandlerFunc {
+	return defaultRateLimiter.Use(scope, User(maxRequests, time.Minute))
 }

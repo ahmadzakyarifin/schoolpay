@@ -2,24 +2,29 @@ package delivery
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/usecase"
+	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type AuthHandler struct {
-	s   usecase.AuthService
-	cfg *config.Config
+	s           usecase.AuthService
+	cfg         *config.Config
+	redisClient *redis.Client
 }
 
-func NewAuthHandler(service usecase.AuthService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(service usecase.AuthService, cfg *config.Config, redisClient *redis.Client) *AuthHandler {
 	return &AuthHandler{
-		s:   service,
-		cfg: cfg,
+		s:           service,
+		cfg:         cfg,
+		redisClient: redisClient,
 	}
 }
 
@@ -134,6 +139,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	if err == nil && refreshToken != "" {
 		_ = h.s.Logout(c.Request.Context(), refreshToken)
 	}
+	
+	// Masukkan access token saat ini ke blacklist Redis
+	h.blacklistToken(c)
+
 	// SameSite Lax Mode: Cookie hanya dikirim jika user membuka web kita secara langsung.
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -156,9 +165,44 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// Masukkan access token saat ini ke blacklist Redis karena password berubah
+	h.blacklistToken(c)
+
 	// SameSite Lax Mode: Cookie hanya dikirim jika user membuka web kita secara langsung.
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
 	helper.SuccessResponse(c, http.StatusOK, "password berhasil diperbarui, silakan login ulang", nil)
+}
+
+func (h *AuthHandler) blacklistToken(c *gin.Context) {
+	if h.redisClient == nil {
+		return
+	}
+
+	var tokenStr string
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	} else {
+		tokenStr = c.Query("token")
+	}
+
+	if tokenStr == "" {
+		return
+	}
+
+	claims, err := utils.ValidateToken(tokenStr, h.cfg.JWTSecret)
+	if err != nil {
+		return
+	}
+
+	// Hitung durasi sisa masa aktif token
+	expiry := claims.ExpiresAt.Time
+	duration := time.Until(expiry)
+	if duration > 0 {
+		_ = h.redisClient.Set(c.Request.Context(), "blacklist:"+tokenStr, "1", duration).Err()
+	}
 }

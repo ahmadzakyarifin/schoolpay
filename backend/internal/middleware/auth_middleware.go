@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
-	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func AuthMiddleware(jwtSecret string, userRepo repository.UserRepo) gin.HandlerFunc {
+func AuthMiddleware(jwtSecret string, userRepo repository.UserRepo, redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		if c.Request.Method == http.MethodOptions {
@@ -39,6 +40,16 @@ func AuthMiddleware(jwtSecret string, userRepo repository.UserRepo) gin.HandlerF
 			helper.ErrorResponse(c, http.StatusUnauthorized, "token tidak ditemukan")
 			c.Abort()
 			return
+		}
+
+		// Pengecekan Blacklist Token di Redis
+		if redisClient != nil {
+			isBlacklisted, err := redisClient.Exists(c.Request.Context(), "blacklist:"+tokenStr).Result()
+			if err == nil && isBlacklisted > 0 {
+				helper.ErrorResponse(c, http.StatusUnauthorized, "sesi login telah berakhir, silakan login kembali")
+				c.Abort()
+				return
+			}
 		}
 
 		claims, err := utils.ValidateToken(tokenStr, jwtSecret)

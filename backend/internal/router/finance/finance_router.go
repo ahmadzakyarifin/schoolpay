@@ -6,6 +6,7 @@ import (
 	financeusecase "github.com/ahmadzakyarifin/schoolpay/internal/module/finance/usecase"
 	userauthrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/repository"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 func SetupFinanceRoutes(
@@ -14,9 +15,10 @@ func SetupFinanceRoutes(
 	userRepo userauthrepo.UserRepo,
 	paySvc financeusecase.PaymentService,
 	sbSvc financeusecase.StudentBillService,
+	redisClient *redis.Client,
 ) {
 	finGroup := api.Group("/finance")
-	finGroup.Use(middleware.AuthMiddleware(jwtSecret, userRepo))
+	finGroup.Use(middleware.AuthMiddleware(jwtSecret, userRepo, redisClient))
 	finGroup.Use(middleware.RoleMiddleware("admin", "parent"))
 	finGroup.Use(middleware.RateLimitPerUser("finance_private", 300))
 

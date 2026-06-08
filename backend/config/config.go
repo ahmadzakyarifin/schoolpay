@@ -25,6 +25,9 @@ type Config struct {
 	MidtransServerKey string
 	MidtransClientKey string
 	MidtransIsSandbox bool
+	RedisHost         string
+	RedisPort         string
+	RedisPass         string
 }
 
 func LoadConfig() *Config {
@@ -50,6 +53,9 @@ func LoadConfig() *Config {
 		MidtransServerKey: os.Getenv("MIDTRANS_SERVER_KEY"),
 		MidtransClientKey: os.Getenv("MIDTRANS_CLIENT_KEY"),
 		MidtransIsSandbox: os.Getenv("MIDTRANS_IS_SANDBOX") == "true",
+		RedisHost:         os.Getenv("REDIS_HOST"),
+		RedisPort:         os.Getenv("REDIS_PORT"),
+		RedisPass:         os.Getenv("REDIS_PASS"),
 	}
 
 	// Validasi khusus untuk lingkungan production demi menjaga keamanan webhook
