@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	_ "github.com/ahmadzakyarifin/schoolpay/docs"
@@ -33,15 +34,21 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Inisialisasi RateLimiter dengan Redis (atau Memory fallback)
-	if redisClient != nil {
-		if rl, err := middleware.NewRedisRateLimiter(redisClient); err == nil {
-			middleware.SetDefaultRateLimiter(rl)
-		}
+	if redisClient == nil {
+		panic("Redis client is required")
 	}
 
+	rl, err := middleware.NewRedisRateLimiter(redisClient)
+	if err != nil {
+		panic("failed to initialize Redis rate limiter: " + err.Error())
+	}
+	middleware.SetDefaultRateLimiter(rl)
+	middleware.SetRateLimitBlockDelay(time.Duration(appConfig.RateLimitBlockDelayMs) * time.Millisecond)
+
 	routerEngine := gin.Default()
+	configureCloudflareClientIP(routerEngine)
 	routerEngine.Use(middleware.CORSMiddleware(appConfig.AppEnv, appConfig.FrontendURL))
+	routerEngine.Use(middleware.SecurityAccessMiddleware(appConfig, redisClient))
 	routerEngine.Static("/uploads", "./public/uploads")
 
 	// Buat komponen global yang dipakai banyak fitur.
@@ -145,4 +152,38 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 	routerEngine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	return appInstance
+}
+
+func configureCloudflareClientIP(router *gin.Engine) {
+	router.RemoteIPHeaders = []string{"CF-Connecting-IP", "X-Forwarded-For", "X-Real-IP"}
+	if err := router.SetTrustedProxies(cloudflareTrustedProxies()); err != nil {
+		panic("failed to configure Cloudflare trusted proxies: " + err.Error())
+	}
+}
+
+func cloudflareTrustedProxies() []string {
+	return []string{
+		"173.245.48.0/20",
+		"103.21.244.0/22",
+		"103.22.200.0/22",
+		"103.31.4.0/22",
+		"141.101.64.0/18",
+		"108.162.192.0/18",
+		"190.93.240.0/20",
+		"188.114.96.0/20",
+		"197.234.240.0/22",
+		"198.41.128.0/17",
+		"162.158.0.0/15",
+		"104.16.0.0/13",
+		"104.24.0.0/14",
+		"172.64.0.0/13",
+		"131.0.72.0/22",
+		"2400:cb00::/32",
+		"2606:4700::/32",
+		"2803:f800::/32",
+		"2405:b500::/32",
+		"2405:8100::/32",
+		"2a06:98c0::/29",
+		"2c0f:f248::/32",
+	}
 }

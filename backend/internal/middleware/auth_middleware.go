@@ -42,14 +42,22 @@ func AuthMiddleware(jwtSecret string, userRepo repository.UserRepo, redisClient 
 			return
 		}
 
-		// Pengecekan Blacklist Token di Redis
-		if redisClient != nil {
-			isBlacklisted, err := redisClient.Exists(c.Request.Context(), "blacklist:"+tokenStr).Result()
-			if err == nil && isBlacklisted > 0 {
-				helper.ErrorResponse(c, http.StatusUnauthorized, "sesi login telah berakhir, silakan login kembali")
-				c.Abort()
-				return
-			}
+		if redisClient == nil {
+			helper.ErrorResponse(c, http.StatusInternalServerError, "layanan sesi tidak tersedia")
+			c.Abort()
+			return
+		}
+
+		isBlacklisted, err := redisClient.Exists(c.Request.Context(), "blacklist:"+tokenStr).Result()
+		if err != nil {
+			helper.ErrorResponse(c, http.StatusInternalServerError, "gagal memeriksa sesi")
+			c.Abort()
+			return
+		}
+		if isBlacklisted > 0 {
+			helper.ErrorResponse(c, http.StatusUnauthorized, "sesi login telah berakhir, silakan login kembali")
+			c.Abort()
+			return
 		}
 
 		claims, err := utils.ValidateToken(tokenStr, jwtSecret)

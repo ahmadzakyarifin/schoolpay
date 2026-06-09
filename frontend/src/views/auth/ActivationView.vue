@@ -84,7 +84,7 @@ const handleSubmit = async () => {
                 <input 
                   v-model="password" 
                   type="password" 
-                  class="modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl" 
+                  class="modern-input !pl-12 !h-[56px] !bg-white !rounded-xl"
                   placeholder="Minimal 6 karakter"
                   minlength="6"
                   required
@@ -97,9 +97,9 @@ const handleSubmit = async () => {
 
             <!-- Error Message -->
             <transition name="fade">
-              <div v-if="error" class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3">
-                <AlertIcon class="w-4 h-4 shrink-0" />
-                <span class="text-[11px] font-bold">{{ error }}</span>
+              <div v-if="error" class="rounded-lg border border-rose-200 bg-white px-3.5 py-3 text-rose-700 flex items-start gap-2.5">
+                <AlertIcon class="mt-0.5 w-4 h-4 shrink-0 text-rose-500" />
+                <p class="text-sm font-medium leading-5">{{ error }}</p>
               </div>
             </transition>
 

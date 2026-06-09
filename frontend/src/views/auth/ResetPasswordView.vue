@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { useForm } from '../../composables/useForm'
+import TurnstileWidget from '../../components/ui/TurnstileWidget.vue'
 import { 
   Lock as LockIcon, 
   ShieldCheck as ShieldCheckIcon, 
@@ -14,6 +15,10 @@ import {
 const route = useRoute()
 const loading = ref(false)
 const success = ref(false)
+const captchaToken = ref('')
+const captchaRef = ref(null)
+const captchaRequired = ref(false)
+const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
 
 const { form, errors, setErrors, clearErrors } = useForm({
   password: '',
@@ -41,20 +46,46 @@ const handleSubmit = async () => {
     return
   }
 
+  if (captchaRequired.value && !turnstileSiteKey) {
+    errors.value = { _general: ['Verifikasi tambahan diperlukan, tetapi site key Turnstile belum dikonfigurasi.'] }
+    return
+  }
+
+  if (captchaRequired.value && !captchaToken.value) {
+    errors.value = { _general: ['Selesaikan verifikasi CAPTCHA terlebih dahulu.'] }
+    return
+  }
+
   loading.value = true
   
   try {
     const token = route.query.token
-    await axios.post('auth/reset-password', { 
+    const response = await axios.post('auth/reset-password', {
       token, 
-      password: form.password 
+      password: form.password,
+      confirm_password: form.confirmPassword,
+      turnstile_token: captchaToken.value
     })
+    if (response.data?.status === false && response.data?.data?.captcha_required === true) {
+      captchaRequired.value = true
+      captchaToken.value = ''
+      errors.value = { _general: [response.data.message || 'Verifikasi tambahan diperlukan.'] }
+      return
+    }
+
+    captchaRequired.value = false
     success.value = true
   } catch (err) {
+    captchaRef.value?.reset()
     setErrors(err)
   } finally {
     loading.value = false
   }
+}
+
+const handleCaptchaError = () => {
+  captchaToken.value = ''
+  errors.value = { _general: ['CAPTCHA gagal dimuat. Muat ulang halaman atau coba beberapa saat lagi.'] }
 }
 </script>
 
@@ -85,7 +116,7 @@ const handleSubmit = async () => {
                 <input 
                   v-model="form.password" 
                   type="password" 
-                  :class="['modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl', errors.password ? '!border-red-500 !ring-red-50' : '']" 
+                  :class="['modern-input !pl-12 !h-[56px] !bg-white !rounded-xl', errors.password ? '!border-rose-500 !ring-rose-50' : '']"
                   placeholder="••••••••"
                 />
               </div>
@@ -101,18 +132,27 @@ const handleSubmit = async () => {
                 <input 
                   v-model="form.confirmPassword" 
                   type="password" 
-                  :class="['modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl', errors.confirmPassword ? '!border-red-500 !ring-red-50' : '']" 
+                  :class="['modern-input !pl-12 !h-[56px] !bg-white !rounded-xl', errors.confirmPassword ? '!border-rose-500 !ring-rose-50' : '']"
                   placeholder="••••••••"
                 />
               </div>
               <FormError :message="errors.confirmPassword" />
             </div>
 
+            <TurnstileWidget
+              v-if="captchaRequired && turnstileSiteKey"
+              ref="captchaRef"
+              v-model="captchaToken"
+              :site-key="turnstileSiteKey"
+              @expired="captchaToken = ''"
+              @error="handleCaptchaError"
+            />
+
             <!-- Error Message -->
             <transition name="fade">
-              <div v-if="errors._general" class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3">
-                <AlertCircleIcon class="w-4 h-4 shrink-0" />
-                <span class="text-[11px] font-bold">{{ errors._general[0] }}</span>
+              <div v-if="errors._general" class="rounded-lg border border-rose-200 bg-white px-3.5 py-3 text-rose-700 flex items-start gap-2.5">
+                <AlertCircleIcon class="mt-0.5 w-4 h-4 shrink-0 text-rose-500" />
+                <p class="text-sm font-medium leading-5">{{ errors._general[0] }}</p>
               </div>
             </transition>
 

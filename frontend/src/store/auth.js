@@ -20,11 +20,15 @@ export const useAuthStore = defineStore('auth', {
     },
 
     actions: {
-        async login(email, password) {
+        async login(email, password, captchaToken = '') {
             this.loading = true
             this.error = null
             try {
-                const response = await axios.post('/auth/login', { email, password })
+                const response = await axios.post('/auth/login', { email, password, turnstile_token: captchaToken })
+                if (response.data?.status === false && response.data?.data?.captcha_required === true) {
+                    this.error = response.data.message || 'Verifikasi tambahan diperlukan.'
+                    return { success: false, captchaRequired: true, response }
+                }
                 const { access_token, user } = response.data.data
                 this.token = access_token
                 this.user = user

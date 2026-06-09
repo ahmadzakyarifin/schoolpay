@@ -421,9 +421,30 @@ Setiap request API berikutnya yang melewati **AuthMiddleware** akan divalidasi d
 3. Jika terdaftar di Redis Blacklist, request hacker langsung ditolak dengan status **`401 Unauthorized`**.
 4. Setelah 20 menit berlalu, Redis akan otomatis menghapus key tersebut via fitur TTL untuk menghemat penggunaan RAM.
 
-### 5. Rotasi Refresh Token (*Refresh Token Rotation*)
-Untuk mencegah penyalahgunaan session, sistem menerapkan rotasi refresh token di dalam transaksi database (`RunInTx`):
-* Setiap kali token di-refresh, token lama dinonaktifkan dan token baru diterbitkan. Jika penyerang mencoba memakai kembali refresh token lama, sistem akan mendeteksi pelanggaran tersebut karena token tersebut sudah tidak terdaftar aktif di database.
+### 5. Strategi Refresh Token: Rotasi vs Static Token (Pilihan Sistem)
+
+Sistem autentikasi menerapkan perbandingan strategis antara dua metode penanganan Refresh Token untuk menjaga keseimbangan antara keamanan (*Security*) dan kenyamanan pengguna (*User Experience*):
+
+#### A. Rotasi Refresh Token (*Refresh Token Rotation - RTR*)
+* **Mekanisme:** Setiap kali `/refresh` dipanggil, backend menerbitkan `Access Token` baru dan **`Refresh Token` baru** (token lama dimatikan).
+* **Kelebihan:** Deteksi dini pencurian token. Jika token lama yang sudah mati digunakan kembali, backend tahu ada kebocoran sesi dan langsung memaksa logout seluruh sesi user tersebut.
+* **Kelemahan (Kasus Multi-Tab):** Jika user membuka aplikasi di banyak tab pada browser yang sama, tab-tab tersebut akan saling berebut melakukan `/refresh` di saat yang hampir bersamaan (*race condition*). Hal ini memicu backend menganggap request dari tab kedua sebagai pembajakan sesi (karena mengirim token lama yang baru saja dimatikan oleh tab pertama), sehingga user ter-logout paksa di semua tab.
+
+#### B. Static Refresh Token / Tanpa Rotasi (Pilihan Implementasi)
+* **Mekanisme:** Selama masa aktif `Refresh Token` belum kedaluwarsa, pemanggilan `/refresh` hanya akan memperbarui `Access Token`. `Refresh Token` tetap statis dan tidak diganti baru.
+* **Kelebihan:** Sangat stabil untuk penggunaan multi-tab di browser yang sama tanpa adanya risiko *race condition* yang memicu logout paksa secara tidak sengaja. Sesi user bertahan mulus selama mereka aktif.
+* **Kelemahan:** Jika token bocor, penyerang memiliki jendela akses yang lebih lama untuk melakukan eksploitasi sesi.
+
+#### C. Mekanisme Mitigasi Keamanan Tambahan
+Untuk mengimbangi ditiadakannya sistem rotasi, sistem menerapkan strategi keamanan berlapis pada level **Rate Limiter (Middleware)** dan **Auth Handler**:
+1. **Multi-Level Rate Limiting:**
+   * Pembatasan berbasis **IP Address** untuk mencegah serangan brute-force secara massal.
+   * Pembatasan berbasis **Email/User ID** untuk mengamankan akun spesifik dari serangan kamus sandi.
+   * Pembatasan berbasis **Device Fingerprint** untuk mendeteksi anomali akses.
+2. **Dynamic Defense (CAPTCHA, Delay, & Allow/Deny):**
+   * **Delay (Toleransi Waktu):** Backend menerapkan penundaan waktu respons (*rate limiting delay*) secara dinamis jika mendeteksi frekuensi request yang mencurigakan sebelum memblokir total akses.
+   * **CAPTCHA Integration:** Jika batas aman terlampaui, alur tidak langsung memblokir user secara permanen melainkan memicu verifikasi visual (CAPTCHA) untuk membedakan bot dengan pengguna manusia asli.
+   * **Allow/Deny Policy:** Implementasi kebijakan whitelist/blacklist IP secara dinamis di tingkat infrastruktur (misalnya memblokir IP yang terindikasi melakukan penyalahgunaan sesi di Redis).
 
 ---
 

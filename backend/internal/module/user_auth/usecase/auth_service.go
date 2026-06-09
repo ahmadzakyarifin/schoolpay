@@ -110,7 +110,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, audit dto
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string, audit dto.AuditMeta, jwtSecret string) (*dto.LoginResponse, error) {
-	user, err := s.r.FindUserByRefreshToken(ctx, refreshToken)
+	user, expiry, err := s.r.FindUserByRefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, errors.New("session tidak valid atau sudah kadaluarsa")
 	}
@@ -123,25 +123,6 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string, aud
 	if err != nil {
 		return nil, errors.New("gagal membuat access token baru")
 	}
-	newRefreshToken, expiry, err := utils.GenerateRefreshToken()
-	if err != nil {
-		return nil, errors.New("gagal membuat refresh token baru")
-	}
-
-	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		repoTx := s.r.WithTx(tx)
-		if err := repoTx.RotateRefreshToken(ctx, refreshToken); err != nil {
-			return err
-		}
-		if err := repoTx.SaveRefreshToken(ctx, user.ID, newRefreshToken, expiry); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, errors.New("gagal menyimpan session")
-	}
 
 	// Set UserID ke audit meta
 	audit.UserID = &user.ID
@@ -152,7 +133,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string, aud
 
 	return &dto.LoginResponse{
 		AccessToken:        newAccessToken,
-		RefreshToken:       newRefreshToken,
+		RefreshToken:       refreshToken,
 		RefreshTokenExpiry: expiry,
 	}, nil
 }

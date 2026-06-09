@@ -176,7 +176,7 @@ func Test_authRepo_FindUserByRefreshToken(t *testing.T) {
 			r := &authRepo{
 				db: tt.fields.db,
 			}
-			got, err := r.FindUserByRefreshToken(tt.args.ctx, tt.args.token)
+			got, _, err := r.FindUserByRefreshToken(tt.args.ctx, tt.args.token)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("authRepo.FindUserByRefreshToken() error = %v, wantErr %v", err, tt.wantErr)
 			}

@@ -37,11 +37,10 @@ func main() {
 
 	redisClient, err := infrastructure.ConnectRedis(*cfg)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to connect to Redis, running with fallback memory storage")
-	} else {
-		log.Info().Msg("Connected to Redis successfully")
-		defer redisClient.Close()
+		log.Fatal().Err(err).Msg("Failed to connect to Redis")
 	}
+	log.Info().Msg("Connected to Redis successfully")
+	defer redisClient.Close()
 
 	app := app.NewApp(db, cfg, redisClient)
 

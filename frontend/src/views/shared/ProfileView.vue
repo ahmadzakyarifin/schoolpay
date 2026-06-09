@@ -27,6 +27,7 @@ const savingProfile = ref(false)
 const photoLoading = ref(false)
 const errors = ref({})
 const photoPreview = ref('')
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const apiBase = axios.defaults.baseURL
 const staticBase = apiBase.replace('/api/', '')
@@ -112,9 +113,43 @@ const goBack = () => {
   router.back()
 }
 
+const setProfileFieldError = (field, messages) => {
+  errors.value = { ...errors.value, [field]: messages }
+}
+
+const clearProfileFieldError = (field) => {
+  if (!errors.value[field]) return
+  const nextErrors = { ...errors.value }
+  delete nextErrors[field]
+  errors.value = nextErrors
+}
+
+const validateProfileEmail = () => {
+  const email = profile.value.email.trim()
+  if (!email) {
+    setProfileFieldError('email', ['Email wajib diisi'])
+    return false
+  }
+  if (!emailPattern.test(email)) {
+    setProfileFieldError('email', ['Format email tidak valid (contoh: user@gmail.com)'])
+    return false
+  }
+  profile.value.email = email.toLowerCase()
+  clearProfileFieldError('email')
+  return true
+}
+
+const handleProfileEmailInput = () => {
+  if (errors.value.email) {
+    validateProfileEmail()
+  }
+}
+
 const updateProfile = async () => {
-  savingProfile.value = true
   errors.value = {}
+  if (!validateProfileEmail()) return
+
+  savingProfile.value = true
   try {
     const payload = {
       name: profile.value.name,
@@ -260,7 +295,15 @@ onMounted(fetchProfile)
               </div>
               <div class="space-y-2">
                 <label class="field-label">Email</label>
-                <input v-model="profile.email" type="email" required class="modern-input" placeholder="nama@email.com">
+                <input
+                  v-model="profile.email"
+                  type="email"
+                  required
+                  :class="['modern-input', errors.email ? '!border-rose-500 !ring-rose-50' : '']"
+                  placeholder="nama@email.com"
+                  @input="handleProfileEmailInput"
+                  @blur="validateProfileEmail"
+                >
                 <FormError :message="errors.email" />
               </div>
               <div class="space-y-2">

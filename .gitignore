@@ -26,6 +26,10 @@ profile.cov
 
 # env file
 .env
+frontend/.env.development
+frontend/.env.production
+frontend/.env.local
+frontend/.env.*.local
 
 # Editor/IDE
 .idea/

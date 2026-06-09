@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/auth'
 import { useForm } from '../../composables/useForm'
+import TurnstileWidget from '../../components/ui/TurnstileWidget.vue'
 import { 
   Mail as MailIcon, 
   Lock as LockIcon, 
@@ -19,6 +20,11 @@ const authStore = useAuthStore()
 const showPassword = ref(false)
 const reasonMessage = ref('')
 const countdown = ref(0)
+const captchaToken = ref('')
+const captchaRef = ref(null)
+const captchaRequired = ref(false)
+const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 let timer = null
 
 onMounted(() => {
@@ -39,10 +45,35 @@ onMounted(() => {
   }
 })
 
-const { form, errors, submitting, setErrors, clearErrors } = useForm({
+const { form, errors, submitting, setErrors, clearErrors, clearFieldError } = useForm({
   email: '',
   password: ''
 })
+
+const setFieldError = (field, messages) => {
+  errors.value = { ...errors.value, [field]: messages }
+}
+
+const validateEmailField = () => {
+  const email = form.email.trim()
+  if (!email) {
+    setFieldError('email', ['Email wajib diisi.'])
+    return false
+  }
+  if (!emailPattern.test(email)) {
+    setFieldError('email', ['Format email tidak valid (contoh: user@gmail.com).'])
+    return false
+  }
+  form.email = email.toLowerCase()
+  clearFieldError('email')
+  return true
+}
+
+const handleEmailInput = () => {
+  if (errors.value.email) {
+    validateEmailField()
+  }
+}
 
 const handleLogin = async () => {
   clearErrors()
@@ -54,12 +85,15 @@ const handleLogin = async () => {
   }
   
   const validationErrors = {}
+  const email = form.email.trim()
   
   // Validasi Email
-  if (!form.email) {
+  if (!email) {
     validationErrors.email = ['Email wajib diisi.']
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+  } else if (!emailPattern.test(email)) {
     validationErrors.email = ['Format email tidak valid (contoh: user@gmail.com).']
+  } else {
+    form.email = email.toLowerCase()
   }
 
   // Validasi Password
@@ -74,16 +108,34 @@ const handleLogin = async () => {
     return
   }
 
-  const result = await authStore.login(form.email, form.password)
+  if (captchaRequired.value && !turnstileSiteKey) {
+    errors.value = { _general: ['Verifikasi tambahan diperlukan, tetapi site key Turnstile belum dikonfigurasi.'] }
+    return
+  }
+
+  if (captchaRequired.value && !captchaToken.value) {
+    errors.value = { _general: ['Selesaikan verifikasi CAPTCHA terlebih dahulu.'] }
+    return
+  }
+
+  const result = await authStore.login(form.email, form.password, captchaToken.value)
   
   if (result.success) {
+    captchaRequired.value = false
+    captchaToken.value = ''
     if (authStore.isAdmin) {
       router.push('/dashboard')
     } else {
       router.push('/parent/dashboard')
     }
+  } else if (result.captchaRequired) {
+    captchaRequired.value = true
+    captchaToken.value = ''
+    errors.value = { _general: [authStore.error || 'Verifikasi tambahan diperlukan.'] }
   } else {
     setErrors(result.error)
+    captchaRequired.value = false
+    captchaRef.value?.reset()
     form.email = ''    // Riset email
     form.password = '' // Riset password
     
@@ -93,6 +145,11 @@ const handleLogin = async () => {
       startCountdown(retryAfter)
     }
   }
+}
+
+const handleCaptchaError = () => {
+  captchaToken.value = ''
+  errors.value = { _general: ['CAPTCHA gagal dimuat. Muat ulang halaman atau coba beberapa saat lagi.'] }
 }
 
 const startCountdown = (duration) => {
@@ -143,14 +200,9 @@ onUnmounted(() => {
 
         <!-- Reason Notification -->
         <transition name="fade">
-          <div v-if="reasonMessage" class="mb-8 bg-rose-50 border border-rose-100 text-rose-600 px-5 py-4 rounded-xl flex items-center gap-4 animate-shake">
-            <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm shrink-0">
-              <AlertIcon class="w-5 h-5 text-rose-500" />
-            </div>
-            <div class="flex flex-col">
-              <span class="text-[10px] font-black uppercase tracking-widest opacity-60">Sistem Keamanan</span>
-              <span class="text-xs font-bold leading-tight">{{ reasonMessage }}</span>
-            </div>
+          <div v-if="reasonMessage" class="mb-6 rounded-lg border border-rose-200 bg-white px-3.5 py-3 text-rose-700 flex items-start gap-2.5">
+            <AlertIcon class="mt-0.5 w-4 h-4 shrink-0 text-rose-500" />
+            <p class="text-sm font-medium leading-5">{{ reasonMessage }}</p>
           </div>
         </transition>
 
@@ -167,8 +219,10 @@ onUnmounted(() => {
               <input 
                 v-model="form.email" 
                 type="email" 
-                :class="['modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl', errors.email ? '!border-red-500 !ring-red-50' : '']" 
+                :class="['modern-input !pl-12 !h-[56px] !bg-white !rounded-xl', errors.email ? '!border-rose-500 !ring-rose-50' : '']"
                 placeholder="name@example.com"
+                @input="handleEmailInput"
+                @blur="validateEmailField"
               />
             </div>
             <FormError :message="errors.email" />
@@ -191,7 +245,7 @@ onUnmounted(() => {
               <input 
                 v-model="form.password" 
                 :type="showPassword ? 'text' : 'password'" 
-                :class="['modern-input !pl-12 !pr-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl', errors.password ? '!border-red-500 !ring-red-50' : '']" 
+                :class="['modern-input !pl-12 !pr-12 !h-[56px] !bg-white !rounded-xl', errors.password ? '!border-rose-500 !ring-rose-50' : '']"
                 placeholder="••••••••"
               />
               <button
@@ -207,16 +261,20 @@ onUnmounted(() => {
             <FormError :message="errors.password" />
           </div>
 
+          <TurnstileWidget
+            v-if="captchaRequired && turnstileSiteKey"
+            ref="captchaRef"
+            v-model="captchaToken"
+            :site-key="turnstileSiteKey"
+            @expired="captchaToken = ''"
+            @error="handleCaptchaError"
+          />
+
           <!-- General Error Message (Credential & Server Issues) -->
           <transition name="fade">
-            <div v-if="errors._general || (authStore.error && !reasonMessage)" class="bg-rose-50 border border-rose-100 text-rose-600 px-5 py-4 rounded-xl flex items-center gap-4 animate-shake">
-              <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm shrink-0">
-                <AlertIcon class="w-5 h-5 text-rose-500" />
-              </div>
-              <div class="flex flex-col">
-                <span class="text-[10px] font-black uppercase tracking-widest opacity-60">Gagal Masuk</span>
-                <span class="text-xs font-bold leading-tight">{{ errors._general ? errors._general[0] : authStore.error }}</span>
-              </div>
+            <div v-if="errors._general || (authStore.error && !reasonMessage)" class="rounded-lg border border-rose-200 bg-white px-3.5 py-3 text-rose-700 flex items-start gap-2.5">
+              <AlertIcon class="mt-0.5 w-4 h-4 shrink-0 text-rose-500" />
+              <p class="text-sm font-medium leading-5">{{ errors._general ? errors._general[0] : authStore.error }}</p>
             </div>
           </transition>
 
@@ -272,16 +330,6 @@ onUnmounted(() => {
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-4px); }
-  75% { transform: translateX(4px); }
-}
-
-.animate-shake {
-  animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
 }
 
 .modern-input {

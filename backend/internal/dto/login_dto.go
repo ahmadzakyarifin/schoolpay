@@ -3,8 +3,10 @@ package dto
 import "time"
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Email          string `json:"email" binding:"required,email"`
+	Password       string `json:"password" binding:"required,min=6"`
+	CaptchaToken   string `json:"captcha_token"`
+	TurnstileToken string `json:"turnstile_token"`
 }
 
 type LoginResponse struct {
@@ -20,5 +22,3 @@ type UserInfo struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
 }
-
-

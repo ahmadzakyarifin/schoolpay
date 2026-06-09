@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
 	academicrepo "github.com/ahmadzakyarifin/schoolpay/internal/module/academic/repository"
@@ -27,23 +29,36 @@ func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg uti
 	studentRepo := academicrepo.NewStudentRepo(db)
 	profileHandler := authhandler.NewProfileHandler(db, userRepo, studentRepo, auditService)
 
-	loginIPLimit := middleware.RateLimitAuthSaringan("auth_login", "ip", 20)
-	loginDeviceLimit := middleware.RateLimitAuthSaringan("auth_login", "device", 10)
-	loginEmailLimit := middleware.RateLimitAuthSaringan("auth_login", "email", 5)
+	loginLimit := middleware.RateLimitRules(
+		"auth_login",
+		middleware.IP(100, time.Minute),
+		middleware.Device(10, time.Minute),
+		middleware.EmailMinute(5, time.Minute),
+		middleware.EmailHour(20, time.Hour),
+		middleware.EmailDay(50, 24*time.Hour),
+		middleware.IPEmail(5, time.Minute),
+		middleware.DeviceEmail(5, time.Minute),
+	)
 	authRefreshLimit := middleware.RateLimitAuthSaringan("auth_refresh", "ip", 60)
 	authLogoutLimit := middleware.RateLimitAuthSaringan("auth_logout", "ip", 60)
-	forgotPasswordIPLimit := middleware.RateLimitAuthSaringan("auth_forgot_password", "ip", 10)
-	forgotPasswordEmailLimit := middleware.RateLimitAuthSaringan("auth_forgot_password", "email", 3)
+	forgotPasswordLimit := middleware.RateLimitRules(
+		"auth_forgot_password",
+		middleware.IP(50, time.Minute),
+		middleware.EmailMinute(3, time.Minute),
+		middleware.EmailHour(10, time.Hour),
+		middleware.IPEmail(3, time.Minute),
+	)
 	resetPasswordLimit := middleware.RateLimitAuthSaringan("auth_reset_password", "ip", 10)
 	changePasswordLimit := middleware.RateLimitPerUser("auth_change_password", 5)
+	captchaCheck := middleware.CaptchaMiddleware(cfg)
 
 	auth := g.Group("/auth")
 	{
-		auth.POST("/login", loginIPLimit, loginDeviceLimit, loginEmailLimit, authHandler.Login)
+		auth.POST("/login", captchaCheck, loginLimit, authHandler.Login)
 		auth.POST("/refresh", authRefreshLimit, authHandler.RefreshToken)
 		auth.POST("/logout", authLogoutLimit, authHandler.Logout)
-		auth.POST("/forgot-password", forgotPasswordIPLimit, forgotPasswordEmailLimit, authHandler.ForgotPassword)
-		auth.POST("/reset-password", resetPasswordLimit, authHandler.ResetPassword)
+		auth.POST("/forgot-password", captchaCheck, forgotPasswordLimit, authHandler.ForgotPassword)
+		auth.POST("/reset-password", captchaCheck, resetPasswordLimit, authHandler.ResetPassword)
 	}
 
 	// Secured auth endpoints

@@ -132,7 +132,7 @@ func (_m *AuthRepo) FindByEmail(ctx context.Context, email string) (*domain.User
 }
 
 // FindUserByRefreshToken provides a mock function with given fields: ctx, token
-func (_m *AuthRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error) {
+func (_m *AuthRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, time.Time, error) {
 	ret := _m.Called(ctx, token)
 
 	if len(ret) == 0 {
@@ -140,8 +140,9 @@ func (_m *AuthRepo) FindUserByRefreshToken(ctx context.Context, token string) (*
 	}
 
 	var r0 *domain.User
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (*domain.User, error)); ok {
+	var r1 time.Time
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*domain.User, time.Time, error)); ok {
 		return rf(ctx, token)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, string) *domain.User); ok {
@@ -152,13 +153,19 @@ func (_m *AuthRepo) FindUserByRefreshToken(ctx context.Context, token string) (*
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string) time.Time); ok {
 		r1 = rf(ctx, token)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(time.Time)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(context.Context, string) error); ok {
+		r2 = rf(ctx, token)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // FindUserByID provides a mock function with given fields: ctx, id
@@ -211,17 +218,17 @@ func (_m *AuthRepo) GetDB() bun.IDB {
 	return r0
 }
 
-// RotateRefreshToken provides a mock function with given fields: ctx, token
-func (_m *AuthRepo) RotateRefreshToken(ctx context.Context, token string) error {
-	ret := _m.Called(ctx, token)
+// UpdateRefreshTokenExpiry provides a mock function with given fields: ctx, token, expiresAt
+func (_m *AuthRepo) UpdateRefreshTokenExpiry(ctx context.Context, token string, expiresAt time.Time) error {
+	ret := _m.Called(ctx, token, expiresAt)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RotateRefreshToken")
+		panic("no return value specified for UpdateRefreshTokenExpiry")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) error); ok {
-		r0 = rf(ctx, token)
+	if rf, ok := ret.Get(0).(func(context.Context, string, time.Time) error); ok {
+		r0 = rf(ctx, token, expiresAt)
 	} else {
 		r0 = ret.Error(0)
 	}

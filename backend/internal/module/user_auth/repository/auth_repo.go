@@ -18,7 +18,7 @@ type AuthRepo interface {
 
 	// Refresh Tokens
 	SaveRefreshToken(ctx context.Context, userID uint, token string, expiresAt time.Time) error
-	FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error)
+	FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, time.Time, error)
 	DeleteRefreshToken(ctx context.Context, token string) error
 	DeleteAllUserRefreshTokens(ctx context.Context, userID uint) error
 
@@ -28,7 +28,6 @@ type AuthRepo interface {
 	DeleteAuthToken(ctx context.Context, token string, tokenType string) error
 	GetDB() bun.IDB
 	WithTx(tx bun.Tx) AuthRepo
-	RotateRefreshToken(ctx context.Context, token string) error
 }
 
 type authRepo struct {
@@ -110,34 +109,27 @@ func (r *authRepo) SaveRefreshToken(ctx context.Context, userID uint, token stri
 	return err
 }
 
-func (r *authRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, error) {
+func (r *authRepo) FindUserByRefreshToken(ctx context.Context, token string) (*domain.User, time.Time, error) {
 	hashedToken := hashToken(token)
-	var u model.UserModel
-	err := r.db.NewSelect().Model(&u).
-		Join("JOIN refresh_tokens AS rt ON rt.user_id = user_model.id").
-		Where("rt.token = ? AND rt.expires_at > ?", hashedToken, time.Now()).
+	var rt RefreshTokenModel
+	err := r.db.NewSelect().Model(&rt).
+		Where("token = ? AND expires_at > ?", hashedToken, time.Now()).
 		Scan(ctx)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	return u.ToDomain(), nil
+
+	u, err := r.FindUserByID(ctx, rt.UserID)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+
+	return u, rt.ExpiresAt, nil
 }
 
 func (r *authRepo) DeleteRefreshToken(ctx context.Context, token string) error {
 	hashedToken := hashToken(token)
 	_, err := r.db.NewDelete().Model((*RefreshTokenModel)(nil)).
-		Where("token = ?", hashedToken).
-		Exec(ctx)
-	return err
-}
-
-func (r *authRepo) RotateRefreshToken(ctx context.Context, token string) error {
-	hashedToken := hashToken(token)
-	// Grace period: Token is still valid for 30 seconds
-	gracePeriod := time.Now().Add(30 * time.Second)
-	
-	_, err := r.db.NewUpdate().Model((*RefreshTokenModel)(nil)).
-		Set("expires_at = ?", gracePeriod).
 		Where("token = ?", hashedToken).
 		Exec(ctx)
 	return err

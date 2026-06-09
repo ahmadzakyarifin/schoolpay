@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onUnmounted } from 'vue'
 import axios from 'axios'
+import TurnstileWidget from '../../components/ui/TurnstileWidget.vue'
 import { 
   Key as KeyIcon, 
   Mail as MailIcon, 
@@ -15,7 +16,34 @@ const loading = ref(false)
 const error = ref(null)
 const success = ref(false)
 const countdown = ref(0)
+const captchaToken = ref('')
+const captchaRef = ref(null)
+const captchaRequired = ref(false)
+const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || ''
+const emailError = ref('')
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 let timer = null
+
+const validateEmail = () => {
+  const cleanEmail = email.value.trim()
+  if (!cleanEmail) {
+    emailError.value = 'Email wajib diisi.'
+    return false
+  }
+  if (!emailPattern.test(cleanEmail)) {
+    emailError.value = 'Format email tidak valid (contoh: user@gmail.com).'
+    return false
+  }
+  email.value = cleanEmail.toLowerCase()
+  emailError.value = ''
+  return true
+}
+
+const handleEmailInput = () => {
+  if (emailError.value) {
+    validateEmail()
+  }
+}
 
 const startCountdown = (duration) => {
   if (timer) clearInterval(timer)
@@ -34,14 +62,37 @@ const startCountdown = (duration) => {
 }
 
 const handleSubmit = async () => {
-  loading.value = true
   error.value = null
+  if (!validateEmail()) return
+
+  loading.value = true
+
+  if (captchaRequired.value && !turnstileSiteKey) {
+    error.value = 'Verifikasi tambahan diperlukan, tetapi site key Turnstile belum dikonfigurasi.'
+    loading.value = false
+    return
+  }
+
+  if (captchaRequired.value && !captchaToken.value) {
+    error.value = 'Selesaikan verifikasi CAPTCHA terlebih dahulu.'
+    loading.value = false
+    return
+  }
   
   try {
-    await axios.post('auth/forgot-password', { email: email.value })
+    const response = await axios.post('auth/forgot-password', { email: email.value, turnstile_token: captchaToken.value })
+    if (response.data?.status === false && response.data?.data?.captcha_required === true) {
+      captchaRequired.value = true
+      captchaToken.value = ''
+      error.value = response.data.message || 'Verifikasi tambahan diperlukan.'
+      return
+    }
+
+    captchaRequired.value = false
     success.value = true
     if (timer) clearInterval(timer)
   } catch (err) {
+    captchaRef.value?.reset()
     const retryAfter = Number(err.response?.data?.data?.retry_after_seconds || err.response?.headers?.['retry-after'] || 0)
     if (err.response?.status === 429 && retryAfter > 0) {
       startCountdown(retryAfter)
@@ -51,6 +102,11 @@ const handleSubmit = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const handleCaptchaError = () => {
+  captchaToken.value = ''
+  error.value = 'CAPTCHA gagal dimuat. Muat ulang halaman atau coba beberapa saat lagi.'
 }
 
 onUnmounted(() => {
@@ -85,18 +141,30 @@ onUnmounted(() => {
                 <input 
                   v-model="email" 
                   type="email" 
-                  class="modern-input !pl-12 !h-[56px] !bg-slate-50/50 focus:!bg-white !rounded-xl" 
+                  :class="['modern-input !pl-12 !h-[56px] !bg-white !rounded-xl', emailError ? '!border-rose-500 !ring-rose-50' : '']"
                   placeholder="name@schoolpay.id"
                   required
+                  @input="handleEmailInput"
+                  @blur="validateEmail"
                 />
               </div>
+              <FormError :message="emailError" />
             </div>
+
+            <TurnstileWidget
+              v-if="captchaRequired && turnstileSiteKey"
+              ref="captchaRef"
+              v-model="captchaToken"
+              :site-key="turnstileSiteKey"
+              @expired="captchaToken = ''"
+              @error="handleCaptchaError"
+            />
 
             <!-- Error Message -->
             <transition name="fade">
-              <div v-if="error" class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3">
-                <AlertIcon class="w-4 h-4 shrink-0" />
-                <span class="text-[11px] font-bold">{{ error }}</span>
+              <div v-if="error" class="rounded-lg border border-rose-200 bg-white px-3.5 py-3 text-rose-700 flex items-start gap-2.5">
+                <AlertIcon class="mt-0.5 w-4 h-4 shrink-0 text-rose-500" />
+                <p class="text-sm font-medium leading-5">{{ error }}</p>
               </div>
             </transition>
 
