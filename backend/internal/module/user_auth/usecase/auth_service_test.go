@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
 	"github.com/ahmadzakyarifin/schoolpay/internal/mocks"
@@ -96,4 +97,32 @@ func TestAuthService_Login_InactiveUser(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Contains(t, err.Error(), "akun Anda belum aktif")
+}
+
+func TestAuthService_RefreshToken_ReturnsUserInfo(t *testing.T) {
+	repoMock := mocks.NewAuthRepo(t)
+	svc := usecase.NewAuthService(repoMock, nil, nil)
+
+	ctx := context.Background()
+	refreshToken := "refresh-token"
+	expiry := time.Now().Add(time.Hour)
+	user := &domain.User{
+		ID:       3,
+		Name:     "Parent User",
+		Email:    "parent@schoolpay.id",
+		Role:     "parent",
+		IsActive: true,
+	}
+
+	repoMock.On("FindUserByRefreshToken", ctx, refreshToken).Return(user, expiry, nil)
+
+	resp, err := svc.RefreshToken(ctx, refreshToken, dto.AuditMeta{}, "secret_key")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.Equal(t, user.ID, resp.User.ID)
+	assert.Equal(t, user.Name, resp.User.Name)
+	assert.Equal(t, user.Email, resp.User.Email)
+	assert.Equal(t, user.Role, resp.User.Role)
 }

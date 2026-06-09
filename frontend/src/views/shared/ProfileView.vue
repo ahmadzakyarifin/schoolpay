@@ -91,7 +91,6 @@ const assignProfile = (user = {}) => {
 
 const syncAuthUser = (user) => {
   authStore.user = user
-  localStorage.setItem('user', JSON.stringify(user))
 }
 
 const fetchProfile = async () => {

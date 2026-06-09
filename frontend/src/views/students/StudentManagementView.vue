@@ -69,7 +69,7 @@ const selectedStudent = ref(null)
 const photoPreview = ref(null)
 
 const authStore = useAuthStore()
-const isOffline = computed(() => authStore.isOffline || (typeof navigator !== 'undefined' && navigator.onLine === false))
+const isOffline = computed(() => (typeof navigator !== 'undefined' && navigator.onLine === false))
 const offlineLockedMessage = 'Aksi ini membutuhkan koneksi server aktif agar data akademik dan export tetap akurat.'
 
 const apiBase = axios.defaults.baseURL
@@ -259,15 +259,13 @@ const saveStudent = async () => {
       }
     })
 
-    const res = isEditing.value
-      ? await studentService.update(form.id, formData)
-      : await studentService.create(formData)
-
-    if (isOfflineQueuedResponse(res)) {
-      showNotification('Perubahan siswa disimpan sementara dan akan disinkronkan saat server online', 'success')
+    if (isEditing.value) {
+      await studentService.update(form.id, formData)
     } else {
-      showNotification(isEditing.value ? 'Siswa berhasil diperbarui' : 'Siswa berhasil ditambahkan', 'success')
+      await studentService.create(formData)
     }
+
+    showNotification(isEditing.value ? 'Siswa berhasil diperbarui' : 'Siswa berhasil ditambahkan', 'success')
     showEditModal.value = false; fetchStudents()
   } catch (err) {
     setErrors(err)
@@ -294,8 +292,6 @@ const showNotification = (msg, type = 'success') => {
   setTimeout(() => notification.show = false, 4000)
 }
 
-const isOfflineQueuedResponse = (res) => res?.status === 202 || res?.data?.status === 'queued'
-
 // Bulk Actions
 const handlePromote = async (data) => {
   try {
@@ -316,12 +312,12 @@ const handleDelete = async () => {
   deleteLoading.value = true
   try {
     if (isBulkDelete.value) {
-      const res = await studentService.bulkDelete(selectedStudentIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedStudentIds.value.length} penghapusan siswa disimpan sementara untuk sinkron` : `${selectedStudentIds.value.length} data siswa berhasil dihapus`, 'success')
+      await studentService.bulkDelete(selectedStudentIds.value)
+      showNotification(`${selectedStudentIds.value.length} data siswa berhasil dihapus`, 'success')
       selectedStudentIds.value = []
     } else {
-      const res = await studentService.delete(studentToDelete.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Penghapusan siswa ${studentToDelete.value.name} disimpan sementara untuk sinkron` : `Siswa ${studentToDelete.value.name} berhasil dihapus`, 'success')
+      await studentService.delete(studentToDelete.value.id)
+      showNotification(`Siswa ${studentToDelete.value.name} berhasil dihapus`, 'success')
     }
     showDeleteConfirm.value = false
     fetchStudents()
@@ -337,12 +333,12 @@ const handleRestore = async () => {
   restoreLoading.value = true
   try {
     if (isBulkRestore.value) {
-      const res = await studentService.bulkRestore(selectedStudentIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedStudentIds.value.length} pemulihan siswa disimpan sementara untuk sinkron` : `${selectedStudentIds.value.length} data siswa berhasil dipulihkan`, 'success')
+      await studentService.bulkRestore(selectedStudentIds.value)
+      showNotification(`${selectedStudentIds.value.length} data siswa berhasil dipulihkan`, 'success')
       selectedStudentIds.value = []
     } else {
-      const res = await studentService.restore(studentToRestore.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Pemulihan siswa ${studentToRestore.value.name} disimpan sementara untuk sinkron` : `Siswa ${studentToRestore.value.name} berhasil dipulihkan`, 'success')
+      await studentService.restore(studentToRestore.value.id)
+      showNotification(`Siswa ${studentToRestore.value.name} berhasil dipulihkan`, 'success')
     }
     showRestoreConfirm.value = false
     fetchStudents()
@@ -356,8 +352,8 @@ const handleRestore = async () => {
 
 const handleToggleStatus = async (student) => {
   try {
-    const res = await studentService.toggleStatus(student.id)
-    showNotification(isOfflineQueuedResponse(res) ? `Perubahan status ${student.name} disimpan sementara untuk sinkron` : `Status ${student.name} berhasil diubah`, 'success')
+    await studentService.toggleStatus(student.id)
+    showNotification(`Status ${student.name} berhasil diubah`, 'success')
     fetchStudents()
   } catch (err) {
     showNotification('Gagal mengubah status', 'error')

@@ -35,7 +35,7 @@ import { Chart as ChartJS, registerables } from 'chart.js'
 ChartJS.register(...registerables)
 const router = useRouter()
 const authStore = useAuthStore()
-const isOffline = computed(() => authStore.isOffline || (typeof navigator !== 'undefined' && navigator.onLine === false))
+const isOffline = computed(() => (typeof navigator !== 'undefined' && navigator.onLine === false))
 const isMounted = ref(false)
 const loading = ref(false)
 

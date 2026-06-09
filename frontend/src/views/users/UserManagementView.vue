@@ -28,7 +28,7 @@ import UserBulkActions from '../../components/users/UserBulkActions.vue'
 import { useAuthStore } from '../../store/auth'
 
 const authStore = useAuthStore()
-const isOffline = computed(() => authStore.isOffline || (typeof navigator !== 'undefined' && navigator.onLine === false))
+const isOffline = computed(() => (typeof navigator !== 'undefined' && navigator.onLine === false))
 
 // State
 const users = ref([])

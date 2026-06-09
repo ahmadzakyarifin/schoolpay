@@ -8,10 +8,10 @@ import (
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
 	"github.com/ahmadzakyarifin/schoolpay/internal/dto"
+	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/domain"
 	"github.com/ahmadzakyarifin/schoolpay/internal/module/user_auth/usecase"
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
-	"github.com/ahmadzakyarifin/schoolpay/internal/helper"
 	"github.com/gin-gonic/gin"
 )
 
@@ -89,6 +89,10 @@ type UserHandler struct {
 
 func NewUserHandler(s usecase.UserService, cfg *config.Config) *UserHandler {
 	return &UserHandler{s: s, cfg: cfg}
+}
+
+func (h *UserHandler) secureCookie() bool {
+	return h.cfg != nil && h.cfg.AppEnv == "production"
 }
 
 func (h *UserHandler) GetAll(c *gin.Context) {
@@ -293,7 +297,7 @@ func (h *UserHandler) Activate(c *gin.Context) {
 
 	// Set Refresh Token in HttpOnly Cookie
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("refresh_token", refreshToken, int(time.Until(expiry).Seconds()), "/", "", false, true)
+	c.SetCookie("refresh_token", refreshToken, int(time.Until(expiry).Seconds()), "/", "", h.secureCookie(), true)
 
 	helper.SuccessResponse(c, http.StatusOK, "akun berhasil diaktifkan", gin.H{
 		"access_token": accessToken,

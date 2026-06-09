@@ -167,27 +167,6 @@
         </div>
       </header>
 
-      <div id="connection-error-banner" v-if="authStore.isOffline" class="mx-6 lg:mx-10 mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-4 text-amber-900 flex items-center gap-4 shadow-sm shadow-amber-100/70">
-        <div class="w-10 h-10 rounded-2xl bg-amber-400 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-200">
-          <WifiOffIcon class="w-5 h-5" />
-        </div>
-        <div class="flex-1">
-          <p class="text-xs font-bold leading-relaxed">
-            Server sedang offline. Data yang sudah tersimpan di cache masih bisa dibaca. Perubahan data master akan disimpan sementara dan disinkronkan saat server online, sedangkan transaksi, pembayaran, generate tagihan, import, dan void tetap dikunci.
-          </p>
-          <p v-if="offlinePendingCount > 0" class="mt-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
-            {{ offlinePendingCount }} perubahan menunggu sinkron
-          </p>
-        </div>
-        <button
-          @click="checkConnection"
-          :disabled="checkingConnection"
-          class="px-4 py-2.5 rounded-xl border border-amber-200 bg-white text-amber-700 hover:bg-amber-100 font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 shrink-0"
-        >
-          {{ checkingConnection ? 'Mengecek...' : 'Coba Lagi' }}
-        </button>
-      </div>
-
       <div class="w-full mx-auto px-6 py-8 lg:px-10">
 
 
@@ -262,7 +241,6 @@ import {
   MapPin as MapPinIcon,
   Search as SearchIcon,
   MessageCircle as MessageCircleIcon,
-  WifiOff as WifiOffIcon,
   Activity as ActivityIcon,
   ChevronRight as ChevronRightIcon,
   RotateCcw as RotateCcwIcon,
@@ -271,7 +249,6 @@ import {
   Database as DatabaseIcon
 } from 'lucide-vue-next'
 import axios from 'axios'
-import { getOfflineOutboxCount, syncOfflineOutbox } from '../utils/offlineSync'
 import { nextTick, onMounted, onUnmounted, ref, computed, watch } from 'vue'
 
 const authStore = useAuthStore()
@@ -282,9 +259,7 @@ const waStatus = ref('OFFLINE')
 const showQRModal = ref(false)
 const qrCodeUrl = ref(null)
 const toast = useToast()
-const checkingConnection = ref(false)
 const waActionLoading = ref(false)
-const offlinePendingCount = ref(0)
 const panelLabel = computed(() => authStore.user?.role === 'parent' ? 'Parent Portal' : 'Admin Panel')
 const headerSubtitle = computed(() => authStore.user?.role === 'parent' ? 'Portal Orang Tua' : 'Industrial Ecosystem')
 
@@ -388,38 +363,6 @@ const checkActiveGroup = () => {
   })
 }
 
-
-const checkConnection = async () => {
-  checkingConnection.value = true
-  try {
-    await axios.get('health', {
-      skipOfflineCache: true,
-      skipOfflineQueue: true,
-      timeout: 3000
-    })
-
-    authStore.isOffline = false
-
-    try {
-      const result = await syncOfflineOutbox()
-      offlinePendingCount.value = result.pending
-      if (result.pending > 0) {
-        toast.warning(`${result.pending} perubahan belum bisa disinkronkan. Server sudah online, silakan cek data yang tertunda.`)
-      }
-    } catch (syncErr) {
-      offlinePendingCount.value = await getOfflineOutboxCount()
-      toast.warning('Server sudah online, tetapi sebagian perubahan offline belum berhasil disinkronkan.')
-    }
-
-    window.location.reload()
-  } catch (err) {
-    authStore.isOffline = true
-    toast.error('Server masih offline. Coba lagi beberapa saat lagi.')
-  } finally {
-    checkingConnection.value = false
-  }
-}
-
 const fetchWAStatus = async () => {
   if (authStore.user?.role !== 'admin') return
   try {
@@ -493,28 +436,12 @@ const restartWA = async () => {
   }
 }
 
-const refreshOfflinePendingCount = async () => {
-  try {
-    offlinePendingCount.value = await getOfflineOutboxCount()
-  } catch (e) {
-    offlinePendingCount.value = 0
-  }
-}
-
-const handleOfflineQueued = async (event) => {
-  offlinePendingCount.value = event.detail?.count ?? await getOfflineOutboxCount()
-  toast.success('Disimpan Offline', 'Perubahan akan disinkronkan saat server online.')
-}
-
-const handleOfflineSynced = async (event) => {
-  offlinePendingCount.value = event.detail?.pending ?? await getOfflineOutboxCount()
-  if ((event.detail?.synced || 0) > 0) {
-    toast.success('Sinkron Selesai', `${event.detail.synced} perubahan berhasil dikirim ke server.`)
-  }
-}
-
 const handleRateLimitError = (event) => {
   toast.warning('Tunggu sebentar', event.detail?.message || 'Terlalu banyak request. Coba lagi sebentar lagi.')
+}
+
+const handleNetworkError = (event) => {
+  toast.error('Server tidak terhubung', event.detail || 'Server tidak dapat dijangkau.')
 }
 
 const initWebSocket = () => {
@@ -608,20 +535,12 @@ const handleLogout = () => {
 
 onMounted(() => {
   checkActiveGroup()
-  refreshOfflinePendingCount()
-  window.addEventListener('offline-sync-queued', handleOfflineQueued)
-  window.addEventListener('offline-sync-complete', handleOfflineSynced)
   window.addEventListener('rate-limit-error', handleRateLimitError)
+  window.addEventListener('network-error', handleNetworkError)
   fetchWAStatus()
   initWebSocket()
   if (authStore.user?.role === 'admin') {
     waInterval = setInterval(fetchWAStatus, 30000)
-  }
-
-  if (authStore.isOffline && typeof navigator !== 'undefined' && navigator.onLine !== false) {
-    setTimeout(() => {
-      checkConnection()
-    }, 300)
   }
 })
 
@@ -630,9 +549,8 @@ watch(() => route.path, () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('offline-sync-queued', handleOfflineQueued)
-  window.removeEventListener('offline-sync-complete', handleOfflineSynced)
   window.removeEventListener('rate-limit-error', handleRateLimitError)
+  window.removeEventListener('network-error', handleNetworkError)
   if (waInterval) clearInterval(waInterval)
   if (qrCodeUrl.value) URL.revokeObjectURL(qrCodeUrl.value)
   if (ws) ws.close()

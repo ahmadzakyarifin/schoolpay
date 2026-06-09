@@ -10,7 +10,6 @@ vi.mock('axios', () => ({
 }))
 
 beforeEach(() => {
-  localStorage.clear()
   setActivePinia(createPinia())
   vi.clearAllMocks()
 })
@@ -26,7 +25,7 @@ describe('auth store', () => {
     expect(result.success).toBe(true)
     expect(auth.token).toBe('token-123')
     expect(auth.user).toEqual(user)
-    expect(JSON.parse(localStorage.getItem('user'))).toEqual(user)
+    expect(auth.isAuthenticated).toBe(true)
   })
 
   it('shows Indonesian wrong credential message on 401 login', async () => {
@@ -39,30 +38,43 @@ describe('auth store', () => {
     expect(auth.error).toBe('Email atau Password Salah')
   })
 
-  it('keeps cached user and enters offline mode when refresh cannot reach server', async () => {
-    const cachedUser = { id: 2, name: 'Parent', role: 'parent' }
-    localStorage.setItem('user', JSON.stringify(cachedUser))
-    axios.post.mockRejectedValueOnce({ code: 'ERR_NETWORK' })
+  it('updates user after successful refresh', async () => {
+    const freshUser = { id: 2, name: 'Fresh Parent', email: 'parent@school.test', role: 'parent' }
+    axios.post.mockResolvedValueOnce({ data: { data: { access_token: 'fresh-token', user: freshUser } } })
 
     const auth = useAuthStore()
     const result = await auth.refreshToken()
 
-    expect(result).toBe('network_error')
-    expect(auth.isOffline).toBe(true)
-    expect(auth.user).toEqual(cachedUser)
+    expect(result).toBe(true)
+    expect(auth.token).toBe('fresh-token')
+    expect(auth.user).toEqual(freshUser)
     expect(auth.isAuthenticated).toBe(true)
   })
 
-  it('clears auth on failed refresh with server response', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, name: 'Parent', role: 'parent' }))
-    axios.post.mockRejectedValueOnce({ response: { status: 401 } })
+  it('clears auth when refresh cannot reach server', async () => {
+    axios.post.mockRejectedValueOnce({ code: 'ERR_NETWORK' })
 
     const auth = useAuthStore()
+    auth.user = { id: 2, name: 'Parent', role: 'parent' }
+    auth.token = 'old-token'
     const result = await auth.refreshToken()
 
     expect(result).toBe(false)
     expect(auth.user).toBeNull()
     expect(auth.token).toBeNull()
-    expect(localStorage.getItem('user')).toBeNull()
+    expect(auth.isAuthenticated).toBe(false)
+  })
+
+  it('clears auth on failed refresh with server response', async () => {
+    axios.post.mockRejectedValueOnce({ response: { status: 401 } })
+
+    const auth = useAuthStore()
+    auth.user = { id: 2, name: 'Parent', role: 'parent' }
+    auth.token = 'old-token'
+    const result = await auth.refreshToken()
+
+    expect(result).toBe(false)
+    expect(auth.user).toBeNull()
+    expect(auth.token).toBeNull()
   })
 })

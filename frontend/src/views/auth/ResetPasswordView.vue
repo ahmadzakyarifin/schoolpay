@@ -25,6 +25,19 @@ const { form, errors, setErrors, clearErrors } = useForm({
   confirmPassword: ''
 })
 
+const setResetPasswordErrors = (err) => {
+  setErrors(err)
+  if (errors.value.confirm_password && !errors.value.confirmPassword) {
+    errors.value = {
+      ...errors.value,
+      confirmPassword: errors.value.confirm_password
+    }
+    const normalized = { ...errors.value }
+    delete normalized.confirm_password
+    errors.value = normalized
+  }
+}
+
 const handleSubmit = async () => {
   clearErrors()
   const validationErrors = {}
@@ -42,7 +55,7 @@ const handleSubmit = async () => {
   }
   
   if (Object.keys(validationErrors).length > 0) {
-    setErrors({ response: { data: { errors: validationErrors } } })
+    setResetPasswordErrors({ response: { data: { errors: validationErrors } } })
     return
   }
 
@@ -77,7 +90,7 @@ const handleSubmit = async () => {
     success.value = true
   } catch (err) {
     captchaRef.value?.reset()
-    setErrors(err)
+    setResetPasswordErrors(err)
   } finally {
     loading.value = false
   }

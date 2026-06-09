@@ -19,14 +19,45 @@ const authStore = useAuthStore()
 const password = ref('')
 const loading = ref(false)
 const error = ref(null)
+const errors = ref({})
 const success = ref(false)
 
+const setActivationErrors = (err) => {
+  const rawErrors = err.response?.data?.errors
+  if (rawErrors && typeof rawErrors === 'object') {
+    const normalized = {}
+    Object.keys(rawErrors).forEach(key => {
+      const val = rawErrors[key]
+      normalized[key] = Array.isArray(val) ? val : [val]
+    })
+    errors.value = normalized
+  }
+  error.value = err.response?.data?.message || 'Aktivasi gagal'
+}
+
 const handleSubmit = async () => {
-  loading.value = true
   error.value = null
+  errors.value = {}
+
+  const token = String(route.query.token || '').trim()
+  if (!token) {
+    error.value = 'Link aktivasi tidak valid atau token tidak ditemukan.'
+    return
+  }
+
+  if (!password.value) {
+    errors.value = { password: ['Password baru wajib diisi.'] }
+    return
+  }
+
+  if (password.value.length < 6) {
+    errors.value = { password: ['Password minimal 6 karakter.'] }
+    return
+  }
+
+  loading.value = true
   
   try {
-    const token = route.query.token
     const response = await axios.post('users/activate', { 
       token, 
       password: password.value 
@@ -38,9 +69,7 @@ const handleSubmit = async () => {
     authStore.token = access_token
     authStore.user = user
     authStore.isInitialized = true
-    
-    localStorage.setItem('user', JSON.stringify(user))
-    
+
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
     
     success.value = true
@@ -50,7 +79,7 @@ const handleSubmit = async () => {
       router.push({ name: user.role === 'admin' ? 'dashboard' : 'parent-dashboard' })
     }, 1500)
   } catch (err) {
-    error.value = err.response?.data?.message || 'Aktivasi gagal'
+    setActivationErrors(err)
   } finally {
     loading.value = false
   }
@@ -84,12 +113,13 @@ const handleSubmit = async () => {
                 <input 
                   v-model="password" 
                   type="password" 
-                  class="modern-input !pl-12 !h-[56px] !bg-white !rounded-xl"
+                  :class="['modern-input !pl-12 !h-[56px] !bg-white !rounded-xl', errors.password ? '!border-rose-500 !ring-rose-50' : '']"
                   placeholder="Minimal 6 karakter"
                   minlength="6"
                   required
                 />
               </div>
+              <FormError :message="errors.password" />
               <p class="text-[10px] font-semibold text-slate-400 px-1 leading-relaxed">
                 Link aktivasi berlaku 7 hari. Jika sudah kedaluwarsa, minta admin sekolah mengirim ulang dari Manajemen Pengguna.
               </p>

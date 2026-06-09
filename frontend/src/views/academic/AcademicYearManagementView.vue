@@ -87,8 +87,6 @@ const showNotification = (message, type = 'success') => {
   }, 4000)
 }
 
-const isOfflineQueuedResponse = (res) => res?.status === 202 || res?.data?.status === 'queued'
-
 const buildYearDependencyInfo = (item) => {
   if (!item) return null
   const messages = []
@@ -184,11 +182,7 @@ const handleSubmit = async (payload) => {
       ? await axios.put(`academic/years/${form.id}`, payload)
       : await axios.post('academic/years', payload)
 
-    if (isOfflineQueuedResponse(res)) {
-      showNotification('Perubahan angkatan disimpan sementara dan akan disinkronkan saat server online')
-    } else {
-      showNotification(isEditing.value ? 'Angkatan berhasil diperbarui' : 'Angkatan berhasil ditambahkan')
-    }
+    showNotification(isEditing.value ? 'Angkatan berhasil diperbarui' : 'Angkatan berhasil ditambahkan')
     showModal.value = false
     fetchData()
   } catch (err) {
@@ -272,12 +266,12 @@ const handleDelete = async () => {
   if (deleteBlocked.value) return
   try {
     if (isBulkAction.value) {
-      const res = await axios.post('academic/years/bulk-delete', { ids: selectedIds.value })
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} penghapusan angkatan disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dihapus`)
+      await axios.post('academic/years/bulk-delete', { ids: selectedIds.value })
+      showNotification(`${selectedIds.value.length} data berhasil dihapus`)
       selectedIds.value = []
     } else {
-      const res = await axios.delete(`academic/years/${itemToProcess.value.id}`)
-      showNotification(isOfflineQueuedResponse(res) ? `Penghapusan angkatan ${itemToProcess.value.year} disimpan sementara untuk sinkron` : 'Angkatan berhasil dipindahkan ke riwayat')
+      await axios.delete(`academic/years/${itemToProcess.value.id}`)
+      showNotification('Angkatan berhasil dipindahkan ke riwayat')
     }
     showDeleteConfirm.value = false
     fetchData()
@@ -292,12 +286,12 @@ const handleDelete = async () => {
 const handleRestore = async () => {
   try {
     if (isBulkAction.value) {
-      const res = await axios.patch('academic/years/bulk-restore', { ids: selectedIds.value })
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} pemulihan angkatan disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dipulihkan`)
+      await axios.patch('academic/years/bulk-restore', { ids: selectedIds.value })
+      showNotification(`${selectedIds.value.length} data berhasil dipulihkan`)
       selectedIds.value = []
     } else {
-      const res = await axios.patch(`academic/years/${itemToProcess.value.id}/restore`)
-      showNotification(isOfflineQueuedResponse(res) ? `Pemulihan angkatan ${itemToProcess.value.year} disimpan sementara untuk sinkron` : 'Angkatan berhasil dipulihkan')
+      await axios.patch(`academic/years/${itemToProcess.value.id}/restore`)
+      showNotification('Angkatan berhasil dipulihkan')
     }
     showRestoreConfirm.value = false
     fetchData()
@@ -309,9 +303,9 @@ const handleRestore = async () => {
 const toggleActive = async (item) => {
   try {
     const payload = { ...item, is_active: !item.is_active }
-    const res = await axios.put(`academic/years/${item.id}`, payload)
-    if (!isOfflineQueuedResponse(res)) item.is_active = !item.is_active
-    showNotification(isOfflineQueuedResponse(res) ? `Perubahan status angkatan ${item.year} disimpan sementara untuk sinkron` : `Status angkatan ${item.year} diperbarui`)
+    await axios.put(`academic/years/${item.id}`, payload)
+    item.is_active = !item.is_active
+    showNotification(`Status angkatan ${item.year} diperbarui`)
   } catch (err) {
     showNotification('Gagal mengubah status', 'error')
   }

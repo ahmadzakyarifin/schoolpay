@@ -76,8 +76,6 @@ const showNotification = (msg, type = 'success') => {
   setTimeout(() => notification.show = false, 4000)
 }
 
-const isOfflineQueuedResponse = (res) => res?.status === 202 || res?.data?.status === 'queued'
-
 const buildMajorDependencyInfo = (item) => {
   if (!item) return null
   const counts = {
@@ -188,11 +186,7 @@ const saveMajor = async () => {
       ? await majorService.update(form.id, form)
       : await majorService.create(form)
 
-    if (isOfflineQueuedResponse(res)) {
-      showNotification('Perubahan jurusan disimpan sementara dan akan disinkronkan saat server online')
-    } else {
-      showNotification(isEditing.value ? 'Jurusan berhasil diperbarui' : 'Jurusan berhasil ditambahkan')
-    }
+    showNotification(isEditing.value ? 'Jurusan berhasil diperbarui' : 'Jurusan berhasil ditambahkan')
     showEditModal.value = false; fetchData()
   } catch (err) {
     const errorData = err.response?.data
@@ -271,12 +265,12 @@ const handleDelete = async () => {
   deleteLoading.value = true
   try {
     if (isBulkAction.value) {
-      const res = await majorService.bulkDelete(selectedIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} penghapusan jurusan disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dihapus`)
+      await majorService.bulkDelete(selectedIds.value)
+      showNotification(`${selectedIds.value.length} data berhasil dihapus`)
       selectedIds.value = []
     } else {
-      const res = await majorService.delete(itemToProcess.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Penghapusan jurusan ${itemToProcess.value.name} disimpan sementara untuk sinkron` : `Jurusan ${itemToProcess.value.name} berhasil dihapus`)
+      await majorService.delete(itemToProcess.value.id)
+      showNotification(`Jurusan ${itemToProcess.value.name} berhasil dihapus`)
     }
     showDeleteConfirm.value = false
     fetchData()
@@ -294,12 +288,12 @@ const handleRestore = async () => {
   restoreLoading.value = true
   try {
     if (isBulkAction.value) {
-      const res = await majorService.bulkRestore(selectedIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} pemulihan jurusan disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dipulihkan`)
+      await majorService.bulkRestore(selectedIds.value)
+      showNotification(`${selectedIds.value.length} data berhasil dipulihkan`)
       selectedIds.value = []
     } else {
-      const res = await majorService.restore(itemToProcess.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Pemulihan jurusan ${itemToProcess.value.name} disimpan sementara untuk sinkron` : `Jurusan ${itemToProcess.value.name} berhasil dipulihkan`)
+      await majorService.restore(itemToProcess.value.id)
+      showNotification(`Jurusan ${itemToProcess.value.name} berhasil dipulihkan`)
     }
     showRestoreConfirm.value = false
     fetchData()
@@ -312,9 +306,9 @@ const handleRestore = async () => {
 
 const handleToggleStatus = async (item) => {
   try {
-    const res = await majorService.toggleStatus(item.id)
-    if (!isOfflineQueuedResponse(res)) item.is_active = !item.is_active
-    showNotification(isOfflineQueuedResponse(res) ? `Perubahan status ${item.name} disimpan sementara untuk sinkron` : `Status ${item.name} diperbarui`)
+    await majorService.toggleStatus(item.id)
+    item.is_active = !item.is_active
+    showNotification(`Status ${item.name} diperbarui`)
   } catch (err) { showNotification('Gagal mengubah status', 'error') }
 }
 

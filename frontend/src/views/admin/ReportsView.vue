@@ -33,7 +33,7 @@ import { useAuthStore } from '../../store/auth'
 
 const authStore = useAuthStore()
 const route = useRoute()
-const isOffline = computed(() => authStore.isOffline || (typeof navigator !== 'undefined' && navigator.onLine === false))
+const isOffline = computed(() => (typeof navigator !== 'undefined' && navigator.onLine === false))
 
 const isMounted = ref(false)
 const showFilters = ref(false)

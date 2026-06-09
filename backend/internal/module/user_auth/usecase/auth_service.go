@@ -135,6 +135,12 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string, aud
 		AccessToken:        newAccessToken,
 		RefreshToken:       refreshToken,
 		RefreshTokenExpiry: expiry,
+		User: dto.UserInfo{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
+			Role:  user.Role,
+		},
 	}, nil
 }
 
@@ -271,7 +277,7 @@ func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRe
 		}
 		return errors.New("gagal memproses password baru")
 	}
-	
+
 	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		repoTx := s.r.WithTx(tx)
 		if err := repoTx.UpdatePassword(ctx, userID, hashed); err != nil {
@@ -320,7 +326,7 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, req dto.C
 		}
 		return errors.New("gagal memproses password baru")
 	}
-	
+
 	err = s.r.GetDB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		repoTx := s.r.WithTx(tx)
 		if err := repoTx.UpdatePassword(ctx, userID, hashed); err != nil {
@@ -328,7 +334,7 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, req dto.C
 		}
 		return repoTx.DeleteAllUserRefreshTokens(ctx, userID)
 	})
-	
+
 	if err == nil {
 		if s.audit != nil {
 			_ = s.audit.LogMeta(ctx, s.r.GetDB(), audit, "CHANGE_PASSWORD", "auth", user.ID, nil, map[string]interface{}{"email": user.Email}, "password changed successfully")

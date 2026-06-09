@@ -3,18 +3,17 @@ import axios from 'axios'
 
 export const useAuthStore = defineStore('auth', {
     state: () => ({
-        user: JSON.parse(localStorage.getItem('user')) || null,
+        user: null,
         token: null, 
         loading: false,
         error: null,
         isInitialized: false,
-        isOffline: false,
         initPromise: null,
         refreshPromise: null 
     }),
 
     getters: {
-        isAuthenticated: (state) => Boolean((state.token && state.user) || (state.isOffline && state.user)),
+        isAuthenticated: (state) => Boolean(state.token && state.user),
         isAdmin: (state) => state.user?.role === 'admin',
         userRole: (state) => state.user?.role
     },
@@ -32,7 +31,6 @@ export const useAuthStore = defineStore('auth', {
                 const { access_token, user } = response.data.data
                 this.token = access_token
                 this.user = user
-                localStorage.setItem('user', JSON.stringify(user))
                 return { success: true }
             } catch (err) {
                 if (err.response?.status === 401) { 
@@ -56,19 +54,15 @@ export const useAuthStore = defineStore('auth', {
             this.refreshPromise = (async () => {
                 try {
                     const response = await axios.post("/auth/refresh")
-                    const { access_token } = response.data.data
+                    const { access_token, user } = response.data.data
                     this.token = access_token
+                    if (user?.id) {
+                        this.user = user
+                    }
                     return true
                 } catch (err) {
-                    const isNetworkError = err.code === "ERR_NETWORK" || !err.response;
-                    if (isNetworkError) {
-                        this.isOffline = true
-                        return "network_error"
-                    } else {
-                        this.isOffline = false
-                        this.clearAuth()
-                        return false
-                    }
+                    this.clearAuth()
+                    return false
                 } finally {
                     this.refreshPromise = null
                 }
@@ -92,7 +86,6 @@ export const useAuthStore = defineStore('auth', {
             this.isInitialized = false
             this.initPromise = null
             this.refreshPromise = null
-            localStorage.removeItem('user')
         },
 
         async initializeAuth() {
@@ -102,7 +95,7 @@ export const useAuthStore = defineStore('auth', {
                 try {
                     const result = await this.refreshToken()
                     this.isInitialized = true
-                    return result === true || result === "network_error"
+                    return result === true
                 } catch (e) {
                     this.isInitialized = true
                     return false

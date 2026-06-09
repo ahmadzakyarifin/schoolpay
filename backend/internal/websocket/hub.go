@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -170,12 +169,7 @@ func isAllowedOrigin(r *http.Request, allowedOrigins ...string) bool {
 			return true
 		}
 	}
-	parsed, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := strings.ToLower(parsed.Hostname())
-	return parsed.Scheme == "http" && (host == "localhost" || host == "127.0.0.1")
+	return false
 }
 
 func (c *Client) readPump() {

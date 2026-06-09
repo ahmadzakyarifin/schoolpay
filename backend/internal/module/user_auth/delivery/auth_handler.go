@@ -28,6 +28,10 @@ func NewAuthHandler(service usecase.AuthService, cfg *config.Config, redisClient
 	}
 }
 
+func (h *AuthHandler) secureCookie() bool {
+	return h.cfg != nil && h.cfg.AppEnv == "production"
+}
+
 // Login godoc
 // @Summary User Login
 // @Description Authenticate a user and return an access token and refresh token
@@ -57,7 +61,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
 
-	c.SetCookie("refresh_token", res.RefreshToken, int(time.Until(res.RefreshTokenExpiry).Seconds()), "/", "", false, true)
+	c.SetCookie("refresh_token", res.RefreshToken, int(time.Until(res.RefreshTokenExpiry).Seconds()), "/", "", h.secureCookie(), true)
 
 	helper.SuccessResponse(c, http.StatusOK, "login berhasil", res)
 }
@@ -89,7 +93,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	// SameSite Lax Mode: Cookie hanya dikirim jika user membuka web kita secara langsung.
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("refresh_token", res.RefreshToken, int(time.Until(res.RefreshTokenExpiry).Seconds()), "/", "", false, true)
+	c.SetCookie("refresh_token", res.RefreshToken, int(time.Until(res.RefreshTokenExpiry).Seconds()), "/", "", h.secureCookie(), true)
 
 	helper.SuccessResponse(c, http.StatusOK, "token berhasil diperbarui", res)
 }
@@ -139,14 +143,14 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	if err == nil && refreshToken != "" {
 		_ = h.s.Logout(c.Request.Context(), refreshToken)
 	}
-	
+
 	// Masukkan access token saat ini ke blacklist Redis
 	h.blacklistToken(c)
 
 	// SameSite Lax Mode: Cookie hanya dikirim jika user membuka web kita secara langsung.
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", h.secureCookie(), true)
 	helper.SuccessResponse(c, http.StatusOK, "logout berhasil", nil)
 }
 
@@ -171,7 +175,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	// SameSite Lax Mode: Cookie hanya dikirim jika user membuka web kita secara langsung.
 	// Ini mencegah website lain "menitip" request jahat menggunakan identitas/cookie user (keamanan CSRF).
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", h.secureCookie(), true)
 	helper.SuccessResponse(c, http.StatusOK, "password berhasil diperbarui, silakan login ulang", nil)
 }
 

@@ -69,8 +69,6 @@ const showNotification = (msg, type = 'success') => {
   setTimeout(() => notification.show = false, 4000)
 }
 
-const isOfflineQueuedResponse = (res) => res?.status === 202 || res?.data?.status === 'queued'
-
 const buildClassDependencyInfo = (item) => {
   if (!item) return null
   const messages = []
@@ -168,11 +166,7 @@ const saveClass = async () => {
       ? await classService.update(form.id, form)
       : await classService.create(form)
 
-    if (isOfflineQueuedResponse(res)) {
-      showNotification('Perubahan kelas disimpan sementara dan akan disinkronkan saat server online')
-    } else {
-      showNotification(isEditing.value ? 'Kelas berhasil diperbarui' : 'Kelas berhasil ditambahkan')
-    }
+    showNotification(isEditing.value ? 'Kelas berhasil diperbarui' : 'Kelas berhasil ditambahkan')
     showEditModal.value = false; fetchData()
   } catch (err) {
     const errorData = err.response?.data
@@ -252,12 +246,12 @@ const handleDelete = async () => {
   if (deleteBlocked.value) return
   try {
     if (isBulkAction.value) {
-      const res = await classService.bulkDelete(selectedIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} penghapusan kelas disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dihapus`)
+      await classService.bulkDelete(selectedIds.value)
+      showNotification(`${selectedIds.value.length} data berhasil dihapus`)
       selectedIds.value = []
     } else {
-      const res = await classService.delete(itemToProcess.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Penghapusan kelas ${itemToProcess.value.name} disimpan sementara untuk sinkron` : 'Data berhasil dipindahkan ke riwayat')
+      await classService.delete(itemToProcess.value.id)
+      showNotification('Data berhasil dipindahkan ke riwayat')
     }
     showDeleteConfirm.value = false; fetchData()
   } catch (err) { 
@@ -271,12 +265,12 @@ const handleDelete = async () => {
 const handleRestore = async () => {
   try {
     if (isBulkAction.value) {
-      const res = await classService.bulkRestore(selectedIds.value)
-      showNotification(isOfflineQueuedResponse(res) ? `${selectedIds.value.length} pemulihan kelas disimpan sementara untuk sinkron` : `${selectedIds.value.length} data berhasil dipulihkan`)
+      await classService.bulkRestore(selectedIds.value)
+      showNotification(`${selectedIds.value.length} data berhasil dipulihkan`)
       selectedIds.value = []
     } else {
-      const res = await classService.restore(itemToProcess.value.id)
-      showNotification(isOfflineQueuedResponse(res) ? `Pemulihan kelas ${itemToProcess.value.name} disimpan sementara untuk sinkron` : 'Data berhasil dipulihkan')
+      await classService.restore(itemToProcess.value.id)
+      showNotification('Data berhasil dipulihkan')
     }
     showRestoreConfirm.value = false; fetchData()
   } catch (err) { showNotification('Gagal memulihkan data', 'error') }
@@ -284,9 +278,9 @@ const handleRestore = async () => {
 
 const handleToggleStatus = async (item) => {
   try {
-    const res = await classService.toggleStatus(item.id)
-    if (!isOfflineQueuedResponse(res)) item.is_active = !item.is_active
-    showNotification(isOfflineQueuedResponse(res) ? `Perubahan status ${item.name} disimpan sementara untuk sinkron` : `Status ${item.name} diperbarui`)
+    await classService.toggleStatus(item.id)
+    item.is_active = !item.is_active
+    showNotification(`Status ${item.name} diperbarui`)
   } catch (err) { showNotification('Gagal mengubah status', 'error') }
 }
 
