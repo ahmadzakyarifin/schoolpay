@@ -22,9 +22,8 @@ WORKDIR /app
 
 # Copy binaries from builder
 COPY --from=builder /app/main .
-# Copy migrations and API docs
+# Copy migrations
 COPY --from=builder /app/database/migrations ./migrations
-COPY --from=builder /app/docs ./docs
 
 EXPOSE 8080
 

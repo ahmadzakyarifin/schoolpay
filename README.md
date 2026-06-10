@@ -39,12 +39,12 @@ Database merupakan *core dependency* (ketergantungan utama). Jika koneksi databa
 4. **Rakit Dependency Bersama** — Memanggil `buildAppServices()` untuk service/repository yang dipakai lintas router.
 5. **Daftarkan WebSocket Global** — Membuka `/api/ws` untuk event realtime lintas role.
 6. **Jalankan Background Jobs** — Menjalankan scheduler, database worker, dan cleanup idempotency.
-7. **Daftarkan Router Fitur** — Auth, admin, parent, finance, webhook, dan swagger.
+7. **Daftarkan Router Fitur** — Auth, admin, parent, finance, dan webhook.
 
 ### Apa yang boleh ada di `app.go`?
 * **Middleware global:** CORS, rate limit global, idempotency middleware.
 * **Komponen global:** Messenger, websocket hub, API group.
-* **Route infrastruktur:** WebSocket global dan Swagger.
+* **Route infrastruktur:** WebSocket global.
 * **Pemanggilan router:** `auth`, `admin`, `parent`, `finance`, `webhook`.
 
 ### Apa yang sebaiknya tidak ditaruh di `app.go`?

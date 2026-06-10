@@ -32,17 +32,6 @@ func (h *AuthHandler) secureCookie() bool {
 	return h.cfg != nil && h.cfg.AppEnv == "production"
 }
 
-// Login godoc
-// @Summary User Login
-// @Description Authenticate a user and return an access token and refresh token
-// @Tags Auth
-// @Accept json
-// @Produce json
-// @Param request body dto.LoginRequest true "Login Credentials"
-// @Success 200 {object} helper.Response{data=dto.LoginResponse}
-// @Failure 400 {object} helper.Response
-// @Failure 401 {object} helper.Response
-// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -66,15 +55,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	helper.SuccessResponse(c, http.StatusOK, "login berhasil", res)
 }
 
-// RefreshToken godoc
-// @Summary Refresh Access Token
-// @Description Get a new access token using a refresh token from cookies
-// @Tags Auth
-// @Accept json
-// @Produce json
-// @Success 200 {object} helper.Response{data=dto.LoginResponse}
-// @Failure 401 {object} helper.Response
-// @Router /auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {
@@ -130,14 +110,6 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	helper.SuccessResponse(c, http.StatusOK, "password berhasil diubah", nil)
 }
 
-// Logout godoc
-// @Summary User Logout
-// @Description Invalidate the refresh token and clear cookies
-// @Tags Auth
-// @Accept json
-// @Produce json
-// @Success 200 {object} helper.Response
-// @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err == nil && refreshToken != "" {

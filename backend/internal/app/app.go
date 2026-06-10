@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/ahmadzakyarifin/schoolpay/config"
-	_ "github.com/ahmadzakyarifin/schoolpay/docs"
 	"github.com/ahmadzakyarifin/schoolpay/internal/middleware"
 	"github.com/ahmadzakyarifin/schoolpay/internal/router/admin"
 	"github.com/ahmadzakyarifin/schoolpay/internal/router/auth"
@@ -16,8 +15,6 @@ import (
 	"github.com/ahmadzakyarifin/schoolpay/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/uptrace/bun"
 )
 
@@ -48,7 +45,6 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 	routerEngine := gin.Default()
 	configureCloudflareClientIP(routerEngine)
 	routerEngine.Use(middleware.CORSMiddleware(appConfig.AppEnv, appConfig.FrontendURL))
-	routerEngine.Use(middleware.SecurityAccessMiddleware(appConfig, redisClient))
 	routerEngine.Static("/uploads", "./public/uploads")
 
 	// Buat komponen global yang dipakai banyak fitur.
@@ -69,7 +65,7 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 
 	// Buat group API dan pasang middleware yang berlaku untuk semua endpoint API.
 	apiGroup := appInstance.Server.Group("/api")
-	apiGroup.Use(middleware.RateLimitAuthSaringan("global", "ip", 3000))
+	apiGroup.Use(middleware.RateLimitAuthSaringan("global", "ip", 1000))
 	apiGroup.Use(middleware.IdempotencyMiddleware(database))
 
 	appContext := context.Background()
@@ -110,7 +106,7 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 	adminGroup := apiGroup.Group("")
 	adminGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository, redisClient))
 	adminGroup.Use(middleware.RoleMiddleware("admin"))
-	adminGroup.Use(middleware.RateLimitPerUser("admin_private", 600))
+	adminGroup.Use(middleware.RateLimitPerUser("admin_private", 200))
 	admin.SetupAdminRoutes(
 		adminGroup,
 		apiGroup,
@@ -127,7 +123,7 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 	parentGroup := apiGroup.Group("/parent")
 	parentGroup.Use(middleware.AuthMiddleware(appConfig.JWTSecret, sharedFeatures.UserRepository, redisClient))
 	parentGroup.Use(middleware.RoleMiddleware("parent"))
-	parentGroup.Use(middleware.RateLimitPerUser("parent_private", 300))
+	parentGroup.Use(middleware.RateLimitPerUser("parent_private", 60))
 	parent.SetupParentRoutes(parentGroup, appInstance.DB, &appInstance.Cfg, messenger, appInstance.Hub)
 
 	// Update pemanggilan SetupFinanceRoutes agar menggunakan AuthMiddleware dengan redisClient secara konsisten (dilakukan di setup router masing-masing)
@@ -147,9 +143,6 @@ func NewApp(database *bun.DB, appConfig *config.Config, redisClient *redis.Clien
 		sharedFeatures.FinanceNotificationService,
 		sharedFeatures.AuditLogService,
 	)
-
-	// Dokumentasi API.
-	routerEngine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	return appInstance
 }

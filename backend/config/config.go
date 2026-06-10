@@ -32,8 +32,6 @@ type Config struct {
 	RedisPass             string
 	CaptchaEnabled        bool
 	TurnstileSecretKey    string
-	RateLimitAllowIPs     []string
-	RateLimitDenyIPs      []string
 	RateLimitBlockDelayMs int
 }
 
@@ -64,8 +62,6 @@ func LoadConfig() *Config {
 		RedisPass:             os.Getenv("REDIS_PASS"),
 		CaptchaEnabled:        envBool("CAPTCHA_ENABLED") || os.Getenv("TURNSTILE_SECRET_KEY") != "",
 		TurnstileSecretKey:    os.Getenv("TURNSTILE_SECRET_KEY"),
-		RateLimitAllowIPs:     splitCSV(os.Getenv("RATE_LIMIT_ALLOW_IPS")),
-		RateLimitDenyIPs:      splitCSV(os.Getenv("RATE_LIMIT_DENY_IPS")),
 		RateLimitBlockDelayMs: envInt("RATE_LIMIT_BLOCK_DELAY_MS", 0),
 	}
 
@@ -81,17 +77,6 @@ func LoadConfig() *Config {
 	return cfg
 }
 
-func splitCSV(value string) []string {
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
 
 func envBool(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
@@ -99,13 +84,8 @@ func envBool(key string) bool {
 }
 
 func envInt(key string, fallback int) int {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
+	if parsed, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key))); err == nil {
+		return parsed
 	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
+	return fallback
 }

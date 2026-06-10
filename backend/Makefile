@@ -80,7 +80,7 @@ GOOSE_DOCKER_CREATE := $(COMPOSE) $(COMPOSE_ENV) run $(COMPOSE_RUN_FLAGS) --no-d
 	app-up app-down app-restart app-logs app-ps app-clean \
 	d-status d-up d-up-one d-up-to d-down d-down-to d-redo d-reset d-version d-create d-fix d-validate d-force \
 	status up up-one up-to down down-to redo reset version create fix validate force \
-	mockery openapi-validate
+	mockery
 
 help:
 	@printf '%s\n' \
@@ -363,6 +363,3 @@ force: migrate-force
 
 mockery:
 	@if command -v mockery >/dev/null 2>&1; then mockery; else printf 'mockery tidak terinstall, skip.\n'; fi
-
-openapi-validate:
-	@if [ -f docs/openapi.json ]; then printf 'docs/openapi.json ada.\n'; else printf 'docs/openapi.json tidak ada, skip.\n'; fi

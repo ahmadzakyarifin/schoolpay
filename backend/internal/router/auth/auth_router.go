@@ -44,9 +44,11 @@ func RouterAuthSetup(g *gin.RouterGroup, db *bun.DB, cfg *config.Config, msg uti
 	forgotPasswordLimit := middleware.RateLimitRules(
 		"auth_forgot_password",
 		middleware.IP(50, time.Minute),
+		middleware.Device(10, time.Minute),
 		middleware.EmailMinute(3, time.Minute),
 		middleware.EmailHour(10, time.Hour),
 		middleware.IPEmail(3, time.Minute),
+		middleware.DeviceEmail(3, time.Minute),
 	)
 	resetPasswordLimit := middleware.RateLimitAuthSaringan("auth_reset_password", "ip", 10)
 	changePasswordLimit := middleware.RateLimitPerUser("auth_change_password", 5)

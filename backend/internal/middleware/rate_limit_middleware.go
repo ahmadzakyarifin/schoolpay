@@ -109,11 +109,6 @@ func (r *RateLimiter) Use(scope string, rules ...Rule) gin.HandlerFunc {
 	preparedRules := r.prepareRules(rules)
 
 	return func(c *gin.Context) {
-		if c.GetBool(rateLimitBypassKey) {
-			c.Next()
-			return
-		}
-
 		request := requestIdentity{
 			scope: scope,
 			path:  rateLimitPath(c),
