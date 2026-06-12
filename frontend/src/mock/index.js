@@ -58,12 +58,12 @@ function createMockCRUD(endpoint, collectionName) {
   const collection = db[collectionName];
   
   // GET ALL / GET BY PARAMS
-  mock.onGet(new RegExp(`^/${endpoint}(?:\\?.*)?$`)).reply(config => {
+  mock.onGet(new RegExp(`\\/?${endpoint}(?:\\?.*)?$`)).reply(config => {
     return [200, { status: true, data: { data: collection, total: collection.length, page: 1, totalPages: 1 } }];
   });
 
   // GET SINGLE
-  mock.onGet(new RegExp(`^/${endpoint}/\\d+$`)).reply(config => {
+  mock.onGet(new RegExp(`\\/?${endpoint}/\\d+$`)).reply(config => {
     const id = parseInt(config.url.split('/').pop());
     const item = collection.find(i => i.id === id);
     if (item) return [200, { status: true, data: item }];
@@ -71,10 +71,10 @@ function createMockCRUD(endpoint, collectionName) {
   });
 
   // GET DEPENDENCY INFO (Bypass hapus)
-  mock.onGet(new RegExp(`^/${endpoint}/\\d+/dependency-info$`)).reply(200, { status: true, data: { has_dependencies: false } });
+  mock.onGet(new RegExp(`\\/?${endpoint}/\\d+/dependency-info$`)).reply(200, { status: true, data: { has_dependencies: false } });
 
   // POST (CREATE)
-  mock.onPost(new RegExp(`^/${endpoint}$`)).reply(config => {
+  mock.onPost(new RegExp(`\\/?${endpoint}$`)).reply(config => {
     const data = JSON.parse(config.data || '{}');
     const newItem = { id: Date.now(), ...data, created_at: new Date().toISOString(), is_active: true };
     collection.unshift(newItem);
@@ -82,7 +82,7 @@ function createMockCRUD(endpoint, collectionName) {
   });
 
   // PUT (UPDATE)
-  mock.onPut(new RegExp(`^/${endpoint}/\\d+$`)).reply(config => {
+  mock.onPut(new RegExp(`\\/?${endpoint}/\\d+$`)).reply(config => {
     const id = parseInt(config.url.split('/').pop());
     const data = JSON.parse(config.data || '{}');
     const idx = collection.findIndex(i => i.id === id);
@@ -94,7 +94,7 @@ function createMockCRUD(endpoint, collectionName) {
   });
 
   // DELETE
-  mock.onDelete(new RegExp(`^/${endpoint}/\\d+$`)).reply(config => {
+  mock.onDelete(new RegExp(`\\/?${endpoint}/\\d+$`)).reply(config => {
     const id = parseInt(config.url.split('/').pop());
     const idx = collection.findIndex(i => i.id === id);
     if (idx !== -1) collection.splice(idx, 1);
@@ -102,7 +102,7 @@ function createMockCRUD(endpoint, collectionName) {
   });
 
   // BULK DELETE
-  mock.onPost(new RegExp(`^/${endpoint}/bulk-delete$`)).reply(config => {
+  mock.onPost(new RegExp(`\\/?${endpoint}/bulk-delete$`)).reply(config => {
     const { ids } = JSON.parse(config.data || '{}');
     if (ids && ids.length) {
       ids.forEach(id => {
@@ -114,8 +114,8 @@ function createMockCRUD(endpoint, collectionName) {
   });
   
   // TOGGLE STATUS
-  mock.onPatch(new RegExp(`^/${endpoint}/\\d+/status$`)).reply(config => {
-    const id = parseInt(config.url.split('/')[2]);
+  mock.onPatch(new RegExp(`\\/?${endpoint}/\\d+/status$`)).reply(config => {
+    const id = parseInt(config.url.split('/').splice(-2, 1)[0]);
     const idx = collection.findIndex(i => i.id === id);
     if (idx !== -1) {
       collection[idx].is_active = !collection[idx].is_active;
@@ -125,12 +125,17 @@ function createMockCRUD(endpoint, collectionName) {
   });
 
   // RESTORE
-  mock.onPatch(new RegExp(`^/${endpoint}/\\d+/restore$`)).reply(config => {
+  mock.onPatch(new RegExp(`\\/?${endpoint}/\\d+/restore$`)).reply(config => {
+    return [200, { status: true, message: 'Berhasil dipulihkan' }];
+  });
+
+  // BULK RESTORE
+  mock.onPatch(new RegExp(`\\/?${endpoint}/bulk-restore$`)).reply(config => {
     return [200, { status: true, message: 'Berhasil dipulihkan' }];
   });
 
   // CHECK UNIQUE
-  mock.onGet(new RegExp(`^/${endpoint}/check-unique`)).reply(200, { status: true, data: { is_unique: true } });
+  mock.onGet(new RegExp(`\\/?${endpoint}/check-unique`)).reply(200, { status: true, data: { is_unique: true } });
 }
 
 // ==========================================
