@@ -6,7 +6,7 @@ import App from './App.vue'
 import router from './router'
 import FormError from './components/ui/FormError.vue'
 import { useAuthStore } from './store/auth'
-// import './mock/index.js' 
+import './mock/index.js' 
 axios.defaults.baseURL = import.meta.env.VITE_API_URL || "http://localhost:8080/api/"
 axios.defaults.withCredentials = true
 
