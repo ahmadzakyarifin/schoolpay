@@ -389,29 +389,123 @@ mock.onPost(/\/?finance\/bills\/\d+\/pay-manual/).reply(config => {
     bill.total_paid = bill.amount;
     bill.remaining_amount = 0;
     bill.status = 'paid';
-    db.payments.unshift({ id: nextId(), student_id: bill.student_id, student_name: bill.student_name, method: 'Tunai (Manual)', status: 'success', amount: paid, bill_type_names: bill.bill_type_name || bill.name, created_at: new Date().toISOString() });
+    const paymentId = nextId();
+    db.payments.unshift({ id: paymentId, student_id: bill.student_id, student_name: bill.student_name, method: 'Tunai (Manual)', status: 'success', amount: paid, bill_type_names: bill.bill_type_name || bill.name, created_at: new Date().toISOString() });
     addAuditLog('PAYMENT', 'BILL', `Pembayaran manual ${bill.name} untuk ${bill.student_name} (Rp${paid.toLocaleString('id-ID')})`);
-    return [200, { status: true, message: 'Pembayaran manual berhasil dicatat' }];
+    return [200, { status: true, message: 'Pembayaran manual berhasil dicatat', data: { id: paymentId } }];
   }
   return [404, { status: false, message: 'Tagihan tidak ditemukan' }];
 });
 
-mock.onPost(/\/?finance\/payment-intent/).reply(200, { status: true, data: { snap_token: 'demo-snap-token-12345' } });
+mock.onPost(/\/?finance\/payment-intent/).reply(config => {
+  const payload = parseData(config);
+  const snapToken = `demo-snap-token-${nextId()}`;
+  
+  if (typeof window !== 'undefined') {
+    window._latestPaymentIntent = {
+      student_id: payload.student_id,
+      amount: payload.amount,
+      deposit_applied: payload.deposit_applied || 0,
+      bill_ids: payload.bill_ids || []
+    };
+  }
+  
+  return [200, { status: true, data: { snap_token: snapToken } }];
+});
 
 mock.onPost(/\/?finance\/payments$/).reply(config => {
   const payload = parseData(config);
-  (payload.items || []).forEach(item => {
-    const bill = db.bills.find(b => b.id === item.bill_id);
-    if (bill) {
-      bill.total_paid += item.amount;
-      bill.remaining_amount -= item.amount;
-      if (bill.remaining_amount <= 0) { bill.remaining_amount = 0; bill.status = 'paid'; }
-      else bill.status = 'partial';
+  const student = db.students.find(s => s.id === payload.student_id);
+  const studentName = student ? student.name : 'Siswa';
+  
+  const paymentId = nextId();
+  const items = [];
+  
+  const targetBillIds = payload.bill_ids || [];
+  if (targetBillIds.length > 0) {
+    targetBillIds.forEach(billId => {
+      const bill = db.bills.find(b => b.id === billId);
+      if (bill) {
+        const remainingBefore = bill.remaining_amount;
+        bill.total_paid = bill.amount;
+        bill.remaining_amount = 0;
+        bill.status = 'paid';
+        items.push({ bill_name: bill.name || bill.bill_type_name, period: bill.period, amount: remainingBefore });
+      }
+    });
+  } else {
+    let remaining = payload.amount;
+    const unpaidBills = db.bills.filter(b => b.student_id === payload.student_id && b.status !== 'paid');
+    unpaidBills.forEach(bill => {
+      if (remaining <= 0) return;
+      const toPay = bill.remaining_amount;
+      bill.total_paid = bill.amount;
+      bill.remaining_amount = 0;
+      bill.status = 'paid';
+      items.push({ bill_name: bill.name || bill.bill_type_name, period: bill.period, amount: toPay });
+      remaining -= toPay;
+    });
+  }
+
+  const newPayment = {
+    id: paymentId,
+    student_id: payload.student_id || 1,
+    student_name: studentName,
+    method: payload.method || 'Midtrans',
+    status: 'success',
+    amount: payload.amount || 0,
+    bill_type_names: items.map(item => item.bill_name).join(', ') || 'Pembayaran Tagihan',
+    created_at: new Date().toISOString()
+  };
+  
+  db.payments.unshift(newPayment);
+  addAuditLog('PAYMENT', 'BILL', `Pembayaran ${payload.method || 'Online'} untuk ${studentName} sebesar Rp${(payload.amount || 0).toLocaleString('id-ID')}`);
+  
+  if (payload.deposit_applied > 0 && student) {
+    student.deposit_balance = Math.max(0, student.deposit_balance - payload.deposit_applied);
+  }
+  
+  return [200, { status: true, message: 'Pembayaran berhasil dikonfirmasi', data: { id: paymentId } }];
+});
+
+mock.onGet(/\/?finance\/payments\/([^/]+)\/receipt/).reply(config => {
+  const parts = config.url.split('/');
+  const paymentId = parseInt(parts[parts.length - 2]);
+  const payment = db.payments.find(p => p.id === paymentId);
+  
+  if (!payment) {
+    return [200, {
+      status: true,
+      data: {
+        receipt_number: `SP-${Date.now()}`,
+        paid_at: new Date().toISOString(),
+        payment_method: 'Tunai',
+        student_name: 'Siswa Demo',
+        nis: '12345',
+        amount: 350000,
+        items: [
+          { bill_name: 'SPP Bulanan', period: '2026-06', amount: 350000 }
+        ]
+      }
+    }];
+  }
+
+  const student = db.students.find(s => s.id === payment.student_id) || {};
+  
+  return [200, {
+    status: true,
+    data: {
+      receipt_number: `SP-${payment.id}`,
+      paid_at: payment.created_at,
+      payment_method: payment.method,
+      student_name: payment.student_name,
+      nis: student.nis || String(payment.student_id),
+      amount: payment.amount,
+      items: [
+        { bill_name: payment.bill_type_names || 'Pembayaran Tagihan', period: '', amount: payment.amount }
+      ]
     }
-  });
-  db.payments.unshift({ id: nextId(), student_id: 1, student_name: 'Budi Santoso', method: 'Midtrans', status: 'success', amount: payload.total_amount || 0, bill_type_names: 'Pembayaran Online', created_at: new Date().toISOString() });
-  addAuditLog('PAYMENT', 'BILL', `Pembayaran online sebesar Rp${(payload.total_amount || 0).toLocaleString('id-ID')}`);
-  return [200, { status: true, message: 'Pembayaran berhasil dikonfirmasi' }];
+  }];
 });
 
 mock.onGet(/\/?finance\/payments/).reply(config => {
@@ -421,17 +515,118 @@ mock.onGet(/\/?finance\/payments/).reply(config => {
   return [200, { status: true, data: { data, total: data.length } }];
 });
 
-mock.onGet(/\/?finance\/bill-summaries/).reply(200, { status: true, data: { data: [] } });
+mock.onGet(/\/?finance\/bill-summaries/).reply(config => {
+  const params = config.params || {};
+  const activeBills = getActive(db.bills);
+  
+  const studentBillsMap = {};
+  activeBills.forEach(bill => {
+    if (!studentBillsMap[bill.student_id]) {
+      studentBillsMap[bill.student_id] = [];
+    }
+    studentBillsMap[bill.student_id].push(bill);
+  });
+
+  const summaries = [];
+  const activeStudents = getActive(db.students);
+  
+  activeStudents.forEach(student => {
+    const studentBills = studentBillsMap[student.id] || [];
+    if (studentBills.length === 0) return;
+    
+    let totalAmount = 0;
+    let totalPaid = 0;
+    let billCount = studentBills.length;
+    let paidCount = 0;
+    let overdueCount = 0;
+    let partialCount = 0;
+    let unpaidCount = 0;
+
+    studentBills.forEach(b => {
+      totalAmount += b.amount;
+      totalPaid += b.total_paid;
+      if (b.status === 'paid') paidCount++;
+      else if (b.status === 'overdue') overdueCount++;
+      else if (b.status === 'partial') partialCount++;
+      else unpaidCount++;
+    });
+
+    const outstanding = totalAmount - totalPaid;
+    let status = 'unpaid';
+    if (outstanding === 0 && billCount > 0) status = 'paid';
+    else if (overdueCount > 0) status = 'overdue';
+    else if (partialCount > 0 || totalPaid > 0) status = 'partial';
+
+    summaries.push({
+      id: student.id,
+      student_id: student.id,
+      student_name: student.name,
+      status,
+      outstanding,
+      bill_count: billCount,
+      overdue_count: overdueCount,
+      partial_count: partialCount,
+      unpaid_count: unpaidCount
+    });
+  });
+
+  let filtered = summaries;
+  if (params.search) {
+    const q = params.search.toLowerCase();
+    filtered = filtered.filter(s => s.student_name.toLowerCase().includes(q) || String(s.student_id).includes(q));
+  }
+  if (params.status && params.status !== 'outstanding' && params.status !== 'overdue') {
+    filtered = filtered.filter(s => s.status === params.status);
+  } else if (params.status === 'outstanding') {
+    filtered = filtered.filter(s => s.status !== 'paid');
+  } else if (params.status === 'overdue') {
+    filtered = filtered.filter(s => s.overdue_count > 0);
+  }
+  
+  const total = filtered.length;
+  const page = parseInt(params.page) || 1;
+  const limit = parseInt(params.limit) || 10;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const start = (page - 1) * limit;
+  const paginated = filtered.slice(start, start + limit);
+
+  return [200, { status: true, data: { data: paginated, total } }];
+});
 
 // --- PARENT PORTAL ---
+mock.onGet(/\/?parent\/students\/me/).reply(() => [200, { status: true, data: getActive(db.students).filter(s => s.parent_id === 2) }]);
 mock.onGet(/\/?parent\/students/).reply(() => [200, { status: true, data: getActive(db.students).filter(s => s.parent_id === 2) }]);
+mock.onGet(/\/?parent\/students\/\d+\/class-history/).reply(config => {
+  const studentId = extractId(config.url);
+  const student = db.students.find(s => s.id === studentId);
+  if (student) {
+    return [200, { status: true, data: [
+      { id: 1, class_name: student.class_name, grade: 'X', academic_year: '2024/2025', is_active: true, created_at: student.created_at }
+    ]}];
+  }
+  return [200, { status: true, data: [] }];
+});
+
+mock.onGet(/\/?students\/\d+\/class-history/).reply(config => {
+  const studentId = extractId(config.url);
+  const student = db.students.find(s => s.id === studentId);
+  if (student) {
+    return [200, { status: true, data: [
+      { id: 1, class_name: student.class_name, grade: 'X', academic_year: '2024/2025', is_active: true, created_at: student.created_at }
+    ]}];
+  }
+  return [200, { status: true, data: [] }];
+});
+
 mock.onGet(/\/?finance\/my-bills/).reply(() => {
   const parentStudentIds = getActive(db.students).filter(s => s.parent_id === 2).map(s => s.id);
-  return [200, { status: true, data: { data: getActive(db.bills).filter(b => parentStudentIds.includes(b.student_id)) } }];
+  const parentBills = getActive(db.bills).filter(b => parentStudentIds.includes(b.student_id));
+  return [200, { status: true, data: parentBills }];
 });
+
 mock.onGet(/\/?finance\/my-payments/).reply(() => {
   const parentStudentIds = getActive(db.students).filter(s => s.parent_id === 2).map(s => s.id);
-  return [200, { status: true, data: { data: db.payments.filter(p => parentStudentIds.includes(p.student_id)) } }];
+  return [200, { status: true, data: db.payments.filter(p => parentStudentIds.includes(p.student_id)) }];
 });
 
 // --- USER SPECIAL ACTIONS ---
@@ -457,5 +652,138 @@ mock.onPost().reply(200, { status: true, message: 'Aksi simulasi berhasil' });
 mock.onPut().reply(200, { status: true, message: 'Aksi simulasi berhasil' });
 mock.onPatch().reply(200, { status: true, message: 'Aksi simulasi berhasil' });
 mock.onDelete().reply(200, { status: true, message: 'Aksi simulasi berhasil' });
+
+if (typeof window !== 'undefined') {
+  const injectMidtransSnapMock = () => {
+    window.snap = {
+      pay(token, callbacks) {
+        console.log('Midtrans Snap mock triggered with token:', token);
+        
+        const existing = document.getElementById('midtrans-snap-mock-modal');
+        if (existing) existing.remove();
+        
+        const intent = window._latestPaymentIntent || { student_id: 1, amount: 350000, deposit_applied: 0, bill_ids: [] };
+        
+        const modal = document.createElement('div');
+        modal.id = 'midtrans-snap-mock-modal';
+        modal.style.position = 'fixed';
+        modal.style.inset = '0';
+        modal.style.zIndex = '99999';
+        modal.style.backgroundColor = 'rgba(15, 23, 42, 0.6)';
+        modal.style.backdropFilter = 'blur(4px)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.fontFamily = 'Inter, sans-serif';
+        modal.style.padding = '16px';
+        
+        modal.innerHTML = `
+          <div style="background-color: white; width: 100%; max-w: 420px; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); border: 1px solid #e2e8f0; animation: midtransScaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);">
+            <!-- Header -->
+            <div style="background-color: #002c5f; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; color: white;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 800; font-size: 16px; tracking: -0.02em;">midtrans</span>
+                <span style="background-color: #00db72; color: #002c5f; font-size: 8px; font-weight: 900; padding: 2px 6px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.05em;">Sandbox</span>
+              </div>
+              <div style="font-size: 11px; font-weight: 700; opacity: 0.8;">Simulator Pembayaran</div>
+            </div>
+            
+            <!-- Body -->
+            <div style="padding: 24px; text-align: left;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Total Tagihan</div>
+                <div style="font-size: 24px; font-weight: 800; color: #0f172a;">Rp ${(intent.amount || 0).toLocaleString('id-ID')}</div>
+                <div style="font-size: 10px; color: #94a3b8; font-weight: 600; margin-top: 4px;">Token: ${token}</div>
+              </div>
+              
+              <div style="background-color: #f8fafc; border-radius: 12px; padding: 16px; border: 1px solid #f1f5f9; margin-bottom: 24px;">
+                <div style="font-size: 11px; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 12px;">Pilih Metode Pembayaran Demo:</div>
+                <label style="display: flex; align-items: center; gap: 12px; padding: 10px; background: white; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 8px; cursor: pointer;">
+                  <input type="radio" name="pay_method" value="Virtual Account" checked style="accent-color: #002c5f;">
+                  <span style="font-size: 12px; font-weight: 700; color: #334155;">Bank Transfer / Virtual Account (Demo)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px; padding: 10px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; cursor: pointer;">
+                  <input type="radio" name="pay_method" value="GoPay" style="accent-color: #002c5f;">
+                  <span style="font-size: 12px; font-weight: 700; color: #334155;">GoPay / QRIS (Demo)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px; padding: 10px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer;">
+                  <input type="radio" name="pay_method" value="Kartu Kredit" style="accent-color: #002c5f;">
+                  <span style="font-size: 12px; font-weight: 700; color: #334155;">Kartu Kredit (Demo)</span>
+                </label>
+              </div>
+              
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button id="midtrans-pay-btn" style="width: 100%; background-color: #00db72; color: #002c5f; border: none; padding: 12px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0, 219, 114, 0.2);">
+                  Simulasikan Pembayaran Sukses
+                </button>
+                <button id="midtrans-cancel-btn" style="width: 100%; background-color: #f1f5f9; color: #475569; border: none; padding: 12px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all 0.2s;">
+                  Batalkan Pembayaran
+                </button>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #f8fafc; padding: 14px; text-align: center; border-t: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; font-weight: 600;">
+              Securely processed by Midtrans Simulator
+            </div>
+          </div>
+          
+          <style>
+            @keyframes midtransScaleIn {
+              from { opacity: 0; transform: scale(0.95); }
+              to { opacity: 1; transform: scale(1); }
+            }
+          </style>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        document.getElementById('midtrans-cancel-btn').onclick = () => {
+          modal.remove();
+          if (callbacks.onClose) callbacks.onClose();
+        };
+        
+        document.getElementById('midtrans-pay-btn').onclick = async () => {
+          const btn = document.getElementById('midtrans-pay-btn');
+          btn.disabled = true;
+          btn.innerText = 'Memproses Pembayaran...';
+          btn.style.opacity = '0.7';
+          
+          const selectedMethod = document.querySelector('input[name="pay_method"]:checked').value;
+          
+          try {
+            const res = await axios.post('finance/payments', {
+              student_id: intent.student_id,
+              amount: intent.amount,
+              deposit_applied: intent.deposit_applied,
+              bill_ids: intent.bill_ids,
+              method: `Midtrans (${selectedMethod})`,
+              channel: 'gateway',
+              reference: `MID-${Date.now()}`
+            });
+            
+            modal.remove();
+            
+            if (callbacks.onSuccess) {
+              callbacks.onSuccess(res.data);
+            }
+          } catch (err) {
+            console.error(err);
+            btn.disabled = false;
+            btn.innerText = 'Simulasikan Pembayaran Sukses';
+            btn.style.opacity = '1';
+            alert('Gagal memproses pembayaran simulasi');
+          }
+        };
+      }
+    };
+  };
+  
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    injectMidtransSnapMock();
+  } else {
+    window.addEventListener('DOMContentLoaded', injectMidtransSnapMock);
+  }
+}
 
 export default mock;
