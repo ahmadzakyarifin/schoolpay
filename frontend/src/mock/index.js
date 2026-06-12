@@ -114,7 +114,7 @@ function createMockCRUD(endpoint, collectionName) {
   });
   
   // TOGGLE STATUS
-  mock.onPost(new RegExp(`^/${endpoint}/\\d+/toggle-status$`)).reply(config => {
+  mock.onPatch(new RegExp(`^/${endpoint}/\\d+/status$`)).reply(config => {
     const id = parseInt(config.url.split('/')[2]);
     const idx = collection.findIndex(i => i.id === id);
     if (idx !== -1) {
@@ -123,6 +123,14 @@ function createMockCRUD(endpoint, collectionName) {
     }
     return [404, { status: false, message: 'Tidak ditemukan' }];
   });
+
+  // RESTORE
+  mock.onPatch(new RegExp(`^/${endpoint}/\\d+/restore$`)).reply(config => {
+    return [200, { status: true, message: 'Berhasil dipulihkan' }];
+  });
+
+  // CHECK UNIQUE
+  mock.onGet(new RegExp(`^/${endpoint}/check-unique`)).reply(200, { status: true, data: { is_unique: true } });
 }
 
 // ==========================================
@@ -140,6 +148,11 @@ createMockCRUD('finance/bills', 'bills');
 // ==========================================
 // 4. KUSTOMISASI KHUSUS (OVERRIDE)
 // ==========================================
+
+// GENERATE BILLS SIMULATION
+mock.onPost('/finance/generate-bills').reply(200, { status: true, message: 'Tagihan berhasil digenerate' });
+mock.onPost('/finance/generate-bills/bulk').reply(200, { status: true, message: 'Tagihan berhasil digenerate secara masal' });
+mock.onPost('/finance/generate-bills/bulk-cancel').reply(200, { status: true, message: 'Tagihan berhasil dibatalkan' });
 
 // A. AUTENTIKASI
 mock.onPost('/auth/login').reply(config => {
