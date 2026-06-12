@@ -76,7 +76,7 @@ const handleSubmit = async () => {
     
     // Redirect after a short delay
     setTimeout(() => {
-      router.push({ name: user.role === 'admin' ? 'dashboard' : 'parent-dashboard' })
+      router.push({ name: user.role === 'admin' ? 'dashboard' : 'parent-bills' })
     }, 1500)
   } catch (err) {
     setActivationErrors(err)

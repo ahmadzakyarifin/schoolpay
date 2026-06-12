@@ -126,7 +126,7 @@ const handleLogin = async () => {
     if (authStore.isAdmin) {
       router.push('/dashboard')
     } else {
-      router.push('/parent/dashboard')
+      router.push({ name: 'parent-bills' })
     }
   } else if (result.captchaRequired) {
     captchaRequired.value = true

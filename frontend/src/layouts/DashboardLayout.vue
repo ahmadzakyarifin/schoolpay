@@ -441,6 +441,7 @@ const handleNetworkError = (event) => {
 }
 
 const initWebSocket = () => {
+  if (typeof window !== 'undefined' && window.__SCHOOLPAY_MOCK__) return
   if (!['admin', 'parent'].includes(authStore.user?.role)) return
 
   const token = authStore.token

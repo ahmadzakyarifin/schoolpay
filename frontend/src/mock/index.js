@@ -3,6 +3,10 @@ import MockAdapter from 'axios-mock-adapter';
 
 const mock = new MockAdapter(axios, { delayResponse: 400 });
 
+if (typeof window !== 'undefined') {
+  window.__SCHOOLPAY_MOCK__ = true;
+}
+
 // ============================================================
 // 1. IN-MEMORY DATABASE (DATA SANGAT KOMPLEKS)
 // ============================================================
@@ -71,6 +75,16 @@ const db = {
     { id: 2, type: 'whatsapp', recipient_name: 'Ibu Siti Aminah', recipient_phone: '081234567891', title: 'Tagihan SPP Baru', message: 'Yth. Ibu Siti, tagihan SPP bulan Juni sebesar Rp350.000 telah diterbitkan.', delivery_status: 'delivered', created_at: new Date(Date.now() - 3*86400000).toISOString() },
     { id: 3, type: 'whatsapp', recipient_name: 'Bapak Joko', recipient_phone: '081234567892', title: 'Peringatan Tunggakan', message: 'Yth. Bapak Joko, Citra Dewi memiliki tunggakan SPP Mei 2026 sebesar Rp350.000.', delivery_status: 'failed', created_at: new Date(Date.now() - 1*86400000).toISOString() }
   ],
+  emailNotifications: [
+    { id: 101, type: 'email', recipient_name: 'Bapak Budi', recipient_email: 'parent@demo.com', title: 'Bukti Pembayaran SchoolPay', message: 'Pembayaran Daftar Ulang telah berhasil dikonfirmasi.', delivery_status: 'delivered', created_at: new Date(Date.now() - 2*86400000).toISOString() },
+    { id: 102, type: 'email', recipient_name: 'Ibu Siti Aminah', recipient_email: 'siti@demo.com', title: 'Tagihan Baru SchoolPay', message: 'Tagihan Uang Gedung telah diterbitkan untuk Andi Saputra.', delivery_status: 'sent', created_at: new Date(Date.now() - 4*86400000).toISOString() },
+    { id: 103, type: 'email', recipient_name: 'Bapak Joko', recipient_email: 'joko@demo.com', title: 'Pengingat Tunggakan', message: 'Mohon segera menyelesaikan tunggakan SPP Mei 2026.', delivery_status: 'failed', delivery_error: 'Mailbox sementara tidak tersedia', created_at: new Date(Date.now() - 1*86400000).toISOString() }
+  ],
+  supportConversations: [
+    { id: 1, parent_name: 'Bapak Budi', student_names: 'Budi Santoso', phone_number: '6281234567890', status: 'open', last_message: 'Saya ingin bertanya soal cicilan uang gedung.', created_at: new Date(Date.now() - 45*60000).toISOString() },
+    { id: 2, parent_name: 'Bapak Joko', student_names: 'Citra Dewi, Dian Permata', phone_number: '6281234567892', status: 'pending', last_message: 'Bukti transfer sudah saya kirim lewat WhatsApp.', created_at: new Date(Date.now() - 4*3600000).toISOString() },
+    { id: 3, parent_name: 'Ibu Siti Aminah', student_names: 'Andi Saputra', phone_number: '6281234567891', status: 'closed', last_message: 'Terima kasih, sudah jelas.', created_at: new Date(Date.now() - 26*3600000).toISOString() }
+  ],
   auditLogs: [
     { id: 1, user_name: 'Admin Utama', action: 'CREATE', entity: 'STUDENT', description: 'Menambahkan siswa Budi Santoso', created_at: new Date(Date.now() - 90*86400000).toISOString() },
     { id: 2, user_name: 'Admin Utama', action: 'GENERATE', entity: 'BILLING_RULE', description: 'Generate tagihan SPP untuk 5 siswa', created_at: new Date(Date.now() - 5*86400000).toISOString() },
@@ -115,6 +129,31 @@ const addAuditLog = (action, entity, description) => {
 
 const addNotification = (recipientName, recipientPhone, title, message) => {
   db.notifications.unshift({ id: nextId(), type: 'whatsapp', recipient_name: recipientName, recipient_phone: recipientPhone, title, message, delivery_status: 'delivered', created_at: new Date().toISOString() });
+};
+
+const paramsFrom = (config) => {
+  const query = config.url?.includes('?') ? config.url.split('?')[1] : '';
+  return { ...Object.fromEntries(new URLSearchParams(query)), ...(config.params || {}) };
+};
+
+const paginate = (items, params = {}) => {
+  const page = parseInt(params.page) || 1;
+  const limit = parseInt(params.limit) || 10;
+  const total = items.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+  const start = (page - 1) * limit;
+  return { data: items.slice(start, start + limit), total, page, totalPages };
+};
+
+const paymentTrend = () => {
+  return Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - index));
+    return {
+      date: date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
+      total: Math.max(0, db.payments.reduce((sum, p) => sum + p.amount, 0) / 6 + index * 125000)
+    };
+  });
 };
 
 // ============================================================
@@ -264,18 +303,68 @@ mock.onPost(/\/?users\/activate/).reply(200, { status: true, message: 'Akun berh
 mock.onGet(/\/?dashboard\/stats/).reply(() => {
   const activeStudents = getActive(db.students);
   const activeBills = getActive(db.bills);
+  const paidBills = activeBills.filter(b => b.status === 'paid');
+  const unpaidBills = activeBills.filter(b => b.status !== 'paid');
+  const overdueBills = activeBills.filter(b => b.status === 'overdue');
+  const dueSoonBills = unpaidBills.filter(b => {
+    const diff = new Date(b.due_date).getTime() - Date.now();
+    return diff >= 0 && diff <= 7 * 86400000;
+  });
   return [200, { status: true, data: {
     stats: {
-      students: { total: activeStudents.length },
-      users: { total: getActive(db.users).length, new_this_period: 1 },
-      unpaid_amount: activeBills.filter(b => b.status !== 'paid').reduce((a, b) => a + b.remaining_amount, 0),
+      students: { total: activeStudents.length, total_all: db.students.length, growth: 8 },
+      users: { total: getActive(db.users).length, new_this_period: 1, growth: 4 },
+      bills: { total: activeBills.length, growth: 12 },
+      payments: { total: db.payments.length, growth: 15 },
+      unpaid_amount: unpaidBills.reduce((a, b) => a + b.remaining_amount, 0),
       paid_amount: db.payments.reduce((a, p) => a + p.amount, 0),
-      paid_count: db.payments.length
+      paid_count: paidBills.length,
+      unpaid_count: unpaidBills.length,
+      total_bills: activeBills.length,
+      payments_today: db.payments.filter(p => new Date(p.created_at).toDateString() === new Date().toDateString()).length,
+      failed_reminders: db.notifications.filter(n => n.delivery_status === 'failed').length
     },
+    critical_bills: {
+      overdue: overdueBills.slice(0, 5),
+      due_soon: dueSoonBills.slice(0, 5)
+    },
+    demographics: {
+      gender: {
+        'Laki-laki': activeStudents.filter(s => s.gender === 'Laki-laki').length,
+        'Perempuan': activeStudents.filter(s => s.gender === 'Perempuan').length
+      },
+      major: Object.fromEntries(db.majors.map(m => [m.name, activeStudents.filter(s => s.major_id === m.id).length])),
+      class: Object.fromEntries(db.classes.map(c => [c.name, activeStudents.filter(s => s.class_id === c.id).length])),
+      whatsapp: {
+        pending: db.notifications.filter(n => n.delivery_status === 'pending').length,
+        sent: db.notifications.filter(n => n.delivery_status === 'sent').length,
+        delivered: db.notifications.filter(n => n.delivery_status === 'delivered').length,
+        read: db.notifications.filter(n => n.delivery_status === 'read').length,
+        failed: db.notifications.filter(n => n.delivery_status === 'failed').length
+      },
+      email: {
+        pending: db.emailNotifications.filter(n => n.delivery_status === 'pending').length,
+        sent: db.emailNotifications.filter(n => n.delivery_status === 'sent').length,
+        delivered: db.emailNotifications.filter(n => n.delivery_status === 'delivered').length,
+        read: db.emailNotifications.filter(n => n.delivery_status === 'read').length,
+        failed: db.emailNotifications.filter(n => n.delivery_status === 'failed').length
+      }
+    },
+    payment_trend: paymentTrend(),
+    entry_years: [...new Set(activeStudents.map(s => s.entry_year))].sort(),
+    total_payments_count: db.payments.length,
     recent_payments: db.payments.slice(0, 5),
     recent_notifications: db.notifications.slice(0, 5)
   }}];
 });
+
+mock.onGet(/\/?dashboard\/communication-details/).reply(config => {
+  const params = paramsFrom(config);
+  const logs = params.channel === 'email' ? db.emailNotifications : db.notifications;
+  return [200, { status: true, data: logs.filter(log => !params.status || log.delivery_status === params.status) }];
+});
+
+mock.onGet(/\/?dashboard\/export/).reply(200, new Blob(['Laporan demo SchoolPay'], { type: 'application/octet-stream' }));
 
 // --- STUDENT RELATIONS ---
 mock.onGet(/\/?students\/filters/).reply(() => {
@@ -311,6 +400,16 @@ mock.onGet(/\/?users\/\d+\/students/).reply(config => {
   const parentId = extractId(config.url);
   const children = getActive(db.students).filter(s => s.parent_id === parentId);
   return [200, { status: true, data: children }];
+});
+
+mock.onGet(/\/?users\/parents/).reply(config => {
+  const params = paramsFrom(config);
+  let parents = getActive(db.users).filter(user => user.role === 'parent');
+  if (params.search) {
+    const q = String(params.search).toLowerCase();
+    parents = parents.filter(user => `${user.name} ${user.email} ${user.phone_number}`.toLowerCase().includes(q));
+  }
+  return [200, { status: true, data: { ...paginate(parents, params), users: paginate(parents, params).data } }];
 });
 
 // Student Bulk Actions
@@ -395,6 +494,20 @@ mock.onPost(/\/?finance\/bills\/\d+\/pay-manual/).reply(config => {
     return [200, { status: true, message: 'Pembayaran manual berhasil dicatat', data: { id: paymentId } }];
   }
   return [404, { status: false, message: 'Tagihan tidak ditemukan' }];
+});
+
+mock.onPost(/\/?finance\/bills\/\d+\/remind/).reply(config => {
+  const billId = extractId(config.url);
+  const bill = db.bills.find(b => b.id === billId);
+  if (bill) {
+    const student = db.students.find(s => s.id === bill.student_id);
+    const parent = db.users.find(u => u.id === student?.parent_id);
+    if (parent) {
+      addNotification(parent.name, parent.phone_number, 'Pengingat Tagihan', `Yth. ${parent.name}, tagihan ${bill.name} untuk ${bill.student_name} masih belum lunas.`);
+    }
+    addAuditLog('REMINDER', 'BILL', `Mengirim pengingat tagihan ${bill.name} untuk ${bill.student_name}`);
+  }
+  return [200, { status: true, message: 'Pengingat demo berhasil dikirim' }];
 });
 
 mock.onPost(/\/?finance\/payment-intent/).reply(config => {
@@ -593,6 +706,31 @@ mock.onGet(/\/?finance\/bill-summaries/).reply(config => {
   return [200, { status: true, data: { data: paginated, total } }];
 });
 
+mock.onGet(/\/?finance\/arrears/).reply(config => {
+  const params = paramsFrom(config);
+  let arrears = getActive(db.bills)
+    .filter(b => b.status !== 'paid')
+    .map(b => {
+      const student = db.students.find(s => s.id === b.student_id) || {};
+      const parent = db.users.find(u => u.id === student.parent_id) || {};
+      return {
+        ...b,
+        parent_name: parent.name || '-',
+        parent_phone: parent.phone_number || '-',
+        class_name: student.class_name || '-',
+        major_name: student.major_name || '-',
+        outstanding: b.remaining_amount
+      };
+    });
+
+  if (params.search) {
+    const q = String(params.search).toLowerCase();
+    arrears = arrears.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+  }
+
+  return [200, { status: true, data: paginate(arrears, params) }];
+});
+
 // --- PARENT PORTAL ---
 mock.onGet(/\/?parent\/students\/me/).reply(() => [200, { status: true, data: getActive(db.students).filter(s => s.parent_id === 2) }]);
 mock.onGet(/\/?parent\/students/).reply(() => [200, { status: true, data: getActive(db.students).filter(s => s.parent_id === 2) }]);
@@ -640,8 +778,77 @@ mock.onPost(/\/?users\/bulk-resend-notification/).reply(config => {
 // --- READ-ONLY LOGS ---
 mock.onGet(/\/?notifications(\?.*)?$/).reply(() => [200, { status: true, data: { data: db.notifications, total: db.notifications.length } }]);
 mock.onGet(/\/?audit-logs(\?.*)?$/).reply(() => [200, { status: true, data: { data: db.auditLogs, total: db.auditLogs.length } }]);
-mock.onGet(/\/?whatsapp\/status/).reply(200, { status: true, data: { is_connected: true, device_name: 'Demo WhatsApp Gateway' } });
-mock.onGet(/\/?whatsapp\/qr/).reply(200, new Blob(['QR'], { type: 'image/png' }));
+mock.onGet(/\/?whatsapp\/stats/).reply(() => {
+  const countStatus = (items, status) => items.filter(item => item.delivery_status === status).length;
+  const sent = countStatus(db.notifications, 'sent') + countStatus(db.notifications, 'delivered') + countStatus(db.notifications, 'read') + countStatus(db.emailNotifications, 'sent') + countStatus(db.emailNotifications, 'delivered') + countStatus(db.emailNotifications, 'read');
+  const delivered = countStatus(db.notifications, 'delivered') + countStatus(db.notifications, 'read');
+  const read = countStatus(db.notifications, 'read');
+  const failed = countStatus(db.notifications, 'failed') + countStatus(db.emailNotifications, 'failed');
+  return [200, { status: true, data: {
+    SENT: sent,
+    DELIVERED: delivered,
+    READ: read,
+    FAILED: failed,
+    whatsapp: {
+      total: db.notifications.length,
+      delivered: countStatus(db.notifications, 'delivered'),
+      sent: countStatus(db.notifications, 'sent'),
+      pending: countStatus(db.notifications, 'pending'),
+      failed: countStatus(db.notifications, 'failed')
+    },
+    email: {
+      total: db.emailNotifications.length,
+      delivered: countStatus(db.emailNotifications, 'delivered'),
+      sent: countStatus(db.emailNotifications, 'sent'),
+      pending: countStatus(db.emailNotifications, 'pending'),
+      failed: countStatus(db.emailNotifications, 'failed')
+    }
+  }}];
+});
+mock.onGet(/\/?whatsapp\/logs/).reply(config => {
+  const params = paramsFrom(config);
+  const channel = params.channel || 'whatsapp';
+  let logs = channel === 'email' ? db.emailNotifications : db.notifications;
+  if (params.status) logs = logs.filter(log => log.delivery_status === params.status);
+  if (params.search) {
+    const q = String(params.search).toLowerCase();
+    logs = logs.filter(log => JSON.stringify(log).toLowerCase().includes(q));
+  }
+  return [200, { status: true, data: paginate(logs, params) }];
+});
+mock.onPost(/\/?whatsapp\/notifications\/\d+\/resend/).reply(config => {
+  const id = extractId(config.url);
+  const log = [...db.notifications, ...db.emailNotifications].find(item => item.id === id);
+  if (log) {
+    log.delivery_status = 'delivered';
+    log.delivery_error = '';
+    log.updated_at = new Date().toISOString();
+  }
+  return [200, { status: true, message: 'Notifikasi demo berhasil dikirim ulang' }];
+});
+mock.onGet(/\/?whatsapp\/status/).reply(200, { status: true, data: { status: 'CONNECTED', is_connected: true, device_name: 'Demo WhatsApp Gateway' } });
+mock.onGet(/\/?whatsapp\/qr/).reply(() => [200, new Blob([`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240"><rect width="240" height="240" fill="#fff"/><rect x="24" y="24" width="64" height="64" fill="#0f172a"/><rect x="152" y="24" width="64" height="64" fill="#0f172a"/><rect x="24" y="152" width="64" height="64" fill="#0f172a"/><path d="M104 104h16v16h-16zm32 0h16v16h-16zm32 0h16v16h-16zM104 136h48v16h-48zm64 0h16v48h-16zm-64 32h16v16h-16zm32 0h16v32h-16zm48 32h32v16h-32z" fill="#0f172a"/><text x="120" y="226" text-anchor="middle" font-family="Arial" font-size="11" font-weight="700" fill="#64748b">Demo QR</text></svg>`], { type: 'image/svg+xml' })]);
+mock.onGet(/\/?support\/conversations/).reply(config => {
+  const params = paramsFrom(config);
+  let conversations = db.supportConversations;
+  if (params.status) conversations = conversations.filter(item => item.status === params.status);
+  return [200, { status: true, data: paginate(conversations, params) }];
+});
+mock.onPatch(/\/?support\/conversations\/\d+\/assign/).reply(config => {
+  const item = db.supportConversations.find(c => c.id === extractId(config.url));
+  if (item) item.status = 'pending';
+  return [200, { status: true, message: 'Tiket demo berhasil diambil' }];
+});
+mock.onPatch(/\/?support\/conversations\/\d+\/close/).reply(config => {
+  const item = db.supportConversations.find(c => c.id === extractId(config.url));
+  if (item) item.status = 'closed';
+  return [200, { status: true, message: 'Tiket demo berhasil ditutup' }];
+});
+mock.onPatch(/\/?support\/conversations\/\d+\/status/).reply(config => {
+  const item = db.supportConversations.find(c => c.id === extractId(config.url));
+  if (item) item.status = parseData(config).status || item.status;
+  return [200, { status: true, message: 'Status tiket demo diperbarui' }];
+});
 mock.onPost(/\/?whatsapp/).reply(200, { status: true, message: 'Aksi WhatsApp berhasil' });
 
 // ============================================================
