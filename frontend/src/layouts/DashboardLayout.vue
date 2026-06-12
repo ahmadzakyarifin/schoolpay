@@ -49,10 +49,6 @@
 
         <!-- Parent Menu -->
         <template v-else-if="authStore.user?.role === 'parent'">
-          <router-link to="/parent/dashboard" class="nav-link" active-class="active">
-            <LayoutGridIcon class="w-5 h-5" />
-            <span>Dashboard</span>
-          </router-link>
           <router-link to="/parent/bills" class="nav-link" active-class="active">
             <CreditCardIcon class="w-5 h-5" />
             <span>Tagihan Ananda</span>
@@ -522,7 +518,7 @@ const initWebSocket = () => {
 
 const openParentSupport = async () => {
   if (!route.path.startsWith('/parent')) {
-    await router.push('/parent/dashboard')
+    await router.push('/parent/bills')
   }
   await nextTick()
   window.dispatchEvent(new CustomEvent('open-parent-support'))

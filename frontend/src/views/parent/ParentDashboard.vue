@@ -10,6 +10,8 @@ import {
   ChevronDown as ChevronDownIcon,
   CheckCircle2 as PaidIcon,
   AlertCircle as AlertIcon,
+  Clock as ClockIcon,
+  Wallet as WalletIcon,
   Search as SearchIcon,
   Filter as FilterIcon,
   ArrowUpDown as SortIcon,
@@ -575,7 +577,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50/50 p-4 lg:p-6 space-y-6 animate-fade-in font-inter">
+  <div class="max-w-[1600px] mx-auto p-4 lg:p-8 space-y-10 animate-fade-in relative font-inter">
 
     <!-- Teleport to Header for Global Search and Filters -->
     <Teleport v-if="isMounted" to="#header-actions-target">
@@ -679,15 +681,22 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <div v-for="card in [
-        { label: isHistoryView ? 'Total Transaksi' : 'Total Tagihan', value: selectedSummary.total },
-        { label: isHistoryView ? 'Via Midtrans' : 'Ada Tunggakan', value: selectedSummary.unpaid },
-        { label: isHistoryView ? 'Pakai Saldo' : 'Lewat Tempo', value: selectedSummary.overdue },
-        { label: isHistoryView ? 'Total Dibayar' : 'Sisa Bayar', value: formatCurrency(selectedSummary.remaining), wide: true }
-      ]" :key="card.label" class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-        <p class="text-[9px] font-black text-slate-400 uppercase tracking-[0.22em]">{{ card.label }}</p>
-        <p class="mt-2 text-xl font-black text-slate-800">{{ card.value }}</p>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div v-for="(v, k) in {
+        total: { icon: BillIcon, label: isHistoryView ? 'Total Transaksi' : 'Total Tagihan', color: 'indigo', val: selectedSummary.total },
+        unpaid: { icon: AlertIcon, label: isHistoryView ? 'Via Midtrans' : 'Ada Tunggakan', color: 'amber', val: selectedSummary.unpaid },
+        overdue: { icon: ClockIcon, label: isHistoryView ? 'Pakai Saldo' : 'Lewat Tempo', color: 'rose', val: selectedSummary.overdue },
+        remaining: { icon: WalletIcon, label: isHistoryView ? 'Total Dibayar' : 'Sisa Bayar', color: 'emerald', isP: true, val: selectedSummary.remaining }
+      }" :key="k" class="bg-white border border-slate-200 rounded-2xl p-6 group hover:translate-y-[-4px] shadow-sm hover:shadow-md transition-all">
+        <div class="flex items-center justify-between mb-4">
+          <div :class="[`bg-${v.color}-50 text-${v.color}-600`, 'w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform']">
+            <component :is="v.icon" class="w-5 h-5" />
+          </div>
+        </div>
+        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">{{ v.label }}</p>
+        <h3 class="text-xl font-black text-slate-800 truncate mt-1">
+          {{ v.isP ? formatCurrency(v.val) : (v.val || 0) }}
+        </h3>
       </div>
     </div>
 

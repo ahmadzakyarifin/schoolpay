@@ -139,12 +139,6 @@ const router = createRouter({
 
                 // Parent Routes
                 {
-                    path: '/parent/dashboard',
-                    name: 'parent-dashboard',
-                    component: () => import('../views/parent/ParentDashboard.vue'),
-                    meta: { role: 'parent' }
-                },
-                {
                     path: '/parent/bills',
                     name: 'parent-bills',
                     component: () => import('../views/parent/ParentDashboard.vue'),
@@ -171,7 +165,7 @@ router.beforeEach(async (to, from, next) => {
 
     if (to.meta.guestOnly && isAuthenticated) {
         if (userRole === 'admin') return next({ name: 'dashboard' })
-        return next({ name: 'parent-dashboard' })
+        return next({ name: 'parent-bills' })
     }
 
     if (to.meta.requiresAuth && !isAuthenticated) {
