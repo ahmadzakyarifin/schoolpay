@@ -86,10 +86,10 @@ const db = {
     { id: 3, parent_name: 'Ibu Siti Aminah', student_names: 'Andi Saputra', phone_number: '6281234567891', status: 'closed', last_message: 'Terima kasih, sudah jelas.', created_at: new Date(Date.now() - 26*3600000).toISOString() }
   ],
   auditLogs: [
-    { id: 1, user_name: 'Admin Utama', action: 'CREATE', entity: 'STUDENT', description: 'Menambahkan siswa Budi Santoso', created_at: new Date(Date.now() - 90*86400000).toISOString() },
-    { id: 2, user_name: 'Admin Utama', action: 'GENERATE', entity: 'BILLING_RULE', description: 'Generate tagihan SPP untuk 5 siswa', created_at: new Date(Date.now() - 5*86400000).toISOString() },
-    { id: 3, user_name: 'Admin Utama', action: 'PAYMENT', entity: 'BILL', description: 'Pembayaran manual Daftar Ulang Budi Santoso (Rp500.000)', created_at: new Date(Date.now() - 60*86400000).toISOString() },
-    { id: 4, user_name: 'Admin Utama', action: 'DELETE', entity: 'STUDENT', description: 'Menghapus siswa Farhan Rizky ke Trash', created_at: new Date(Date.now() - 30*86400000).toISOString() }
+    { id: 1, user_name: 'Admin Utama', role: 'admin', action: 'CREATE', entity: 'STUDENT', entity_type: 'students', entity_id: 1, ip_address: '127.0.0.1', description: 'Menambahkan siswa Budi Santoso', created_at: new Date(Date.now() - 90*86400000).toISOString() },
+    { id: 2, user_name: 'Admin Utama', role: 'admin', action: 'GENERATE_BILL', entity: 'BILLING_RULE', entity_type: 'billing_rules', entity_id: 1, ip_address: '127.0.0.1', description: 'Generate tagihan SPP untuk 5 siswa', created_at: new Date(Date.now() - 5*86400000).toISOString() },
+    { id: 3, user_name: 'Admin Utama', role: 'admin', action: 'PROCESS_PAYMENT', entity: 'BILL', entity_type: 'payments', entity_id: 1, ip_address: '127.0.0.1', description: 'Pembayaran manual Daftar Ulang Budi Santoso (Rp500.000)', created_at: new Date(Date.now() - 60*86400000).toISOString() },
+    { id: 4, user_name: 'Admin Utama', role: 'admin', action: 'DELETE', entity: 'STUDENT', entity_type: 'students', entity_id: 6, ip_address: '127.0.0.1', description: 'Menghapus siswa Farhan Rizky ke Trash', created_at: new Date(Date.now() - 30*86400000).toISOString() }
   ]
 };
 
@@ -123,8 +123,33 @@ const extractId = (url, segment) => {
   return null;
 };
 
-const addAuditLog = (action, entity, description) => {
-  db.auditLogs.unshift({ id: nextId(), user_name: 'Admin Utama', action, entity, description, created_at: new Date().toISOString() });
+const entityTypeMap = {
+  users: 'users',
+  students: 'students',
+  academicYears: 'academic_years',
+  majors: 'majors',
+  classes: 'classes',
+  billTypes: 'bill_types',
+  billingRules: 'billing_rules',
+  bills: 'student_bills',
+  payments: 'payments',
+  BILL: 'student_bills',
+  BILLING_RULE: 'billing_rules'
+};
+
+const addAuditLog = (action, entity, description, entityId = null) => {
+  db.auditLogs.unshift({
+    id: nextId(),
+    user_name: 'Admin Utama',
+    role: 'admin',
+    action,
+    entity,
+    entity_type: entityTypeMap[entity] || String(entity || '').toLowerCase(),
+    entity_id: entityId,
+    ip_address: '127.0.0.1',
+    description,
+    created_at: new Date().toISOString()
+  });
 };
 
 const addNotification = (recipientName, recipientPhone, title, message) => {
@@ -143,6 +168,93 @@ const paginate = (items, params = {}) => {
   const totalPages = Math.ceil(total / limit) || 1;
   const start = (page - 1) * limit;
   return { data: items.slice(start, start + limit), total, page, totalPages };
+};
+
+const isActiveStatus = (item) => item.is_active !== false && item.status !== 'inactive';
+
+const applySort = (items, sort = '') => {
+  const data = [...items];
+  const byText = (field, dir = 'asc') => data.sort((a, b) => String(a[field] || '').localeCompare(String(b[field] || '')) * (dir === 'desc' ? -1 : 1));
+  const byNumber = (field, dir = 'asc') => data.sort((a, b) => (Number(a[field] || 0) - Number(b[field] || 0)) * (dir === 'desc' ? -1 : 1));
+  const byDate = (field, dir = 'desc') => data.sort((a, b) => (new Date(a[field] || 0) - new Date(b[field] || 0)) * (dir === 'desc' ? -1 : 1));
+
+  if (sort === 'name_asc') return byText('name');
+  if (sort === 'name_desc') return byText('name', 'desc');
+  if (sort === 'student_asc') return byText('student_name');
+  if (sort === 'student_desc') return byText('student_name', 'desc');
+  if (sort === 'amount_asc') return byNumber('outstanding', 'asc');
+  if (sort === 'amount_desc') return byNumber('outstanding', 'desc');
+  if (sort === 'due_asc') return byDate('nearest_due_date', 'asc');
+  if (sort === 'created_asc') return byDate('created_at', 'asc');
+  if (sort === 'created_desc') return byDate('created_at', 'desc');
+  if (sort === 'code_asc') return byText('code');
+  if (sort === 'code_desc') return byText('code', 'desc');
+  if (sort === 'action_asc') return byText('action');
+  if (sort === 'entity_asc') return byText('entity_type');
+  if (sort === 'user_asc') return byText('user_name');
+  return byDate('created_at', 'desc');
+};
+
+const applyCommonFilters = (items, params = {}, collectionName = '') => {
+  let data = [...items];
+
+  if (params.search) {
+    const q = String(params.search).toLowerCase();
+    data = data.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+  }
+
+  if (params.role) data = data.filter(item => item.role === params.role);
+  if (params.type) {
+    const requestedType = String(params.type).toLowerCase();
+    data = data.filter(item => {
+      const type = String(item.type || '').toLowerCase();
+      if (requestedType === 'recurring') return ['monthly', 'yearly', 'recurring'].includes(type);
+      if (requestedType === 'one_time') return ['one_time', 'sekali'].includes(type);
+      return type === requestedType;
+    });
+  }
+  if (params.class_id) data = data.filter(item => Number(item.class_id) === Number(params.class_id));
+  if (params.major_id) data = data.filter(item => Number(item.major_id) === Number(params.major_id));
+  if (params.bill_type_id) data = data.filter(item => Number(item.bill_type_id) === Number(params.bill_type_id));
+  if (params.academic_year_id) data = data.filter(item => Number(item.academic_year_id) === Number(params.academic_year_id));
+
+  if (params.status && params.status !== 'trash') {
+    if (params.status === 'active') data = data.filter(isActiveStatus);
+    else if (params.status === 'inactive') data = data.filter(item => !isActiveStatus(item));
+    else if (params.status === 'has_child') data = data.filter(item => Number(item.student_count || 0) > 0);
+    else if (params.status === 'no_child') data = data.filter(item => Number(item.student_count || 0) === 0);
+    else if (params.status === 'has_class') data = data.filter(item => Number(item.class_count || 0) > 0);
+    else if (params.status === 'no_class') data = data.filter(item => Number(item.class_count || 0) === 0);
+    else data = data.filter(item => item.status === params.status);
+  }
+
+  if (params.filter === 'has_child') data = data.filter(item => Number(item.student_count || 0) > 0);
+  if (params.filter === 'no_child') data = data.filter(item => Number(item.student_count || 0) === 0);
+
+  if (collectionName === 'billingRules' && params.generate_status) {
+    data = data.filter(item => params.generate_status === 'generated'
+      ? Number(item.bill_count || 0) > 0
+      : Number(item.bill_count || 0) === 0);
+  }
+
+  return applySort(data, params.sort);
+};
+
+const enrichBill = (bill) => {
+  const student = db.students.find(s => s.id === bill.student_id) || {};
+  return {
+    ...bill,
+    remaining_amount: Number(bill.remaining_amount ?? (Number(bill.amount || 0) - Number(bill.total_paid || 0))),
+    deposit_balance: Number(student.deposit_balance || 0),
+    class_id: student.class_id,
+    class_name: student.class_name,
+    major_id: student.major_id,
+    major_name: student.major_name,
+    nis: student.nis,
+    allow_installment: bill.allow_installment ?? bill.status === 'partial',
+    max_installment: bill.max_installment || 3,
+    paid_at: bill.status === 'paid' ? bill.updated_at : null
+  };
 };
 
 const paymentTrend = () => {
@@ -164,19 +276,25 @@ function createCRUD(endpoint, collectionName) {
 
   // GET ALL (supports status=trash)
   mock.onGet(new RegExp(`\\/?${endpoint}(\\?.*)?$`)).reply(config => {
-    const params = config.params || {};
+    const params = paramsFrom(config);
     const isTrash = params.status === 'trash';
     let data = isTrash ? getTrashed(col()) : getActive(col());
-    // Search
-    if (params.search) {
-      const q = params.search.toLowerCase();
-      data = data.filter(i => JSON.stringify(i).toLowerCase().includes(q));
+
+    if (collectionName === 'bills' && params.student_id) {
+      data = data
+        .filter(bill => Number(bill.student_id) === Number(params.student_id))
+        .map(enrichBill);
+      return [200, { status: true, data: applySort(data, params.sort) }];
     }
+
+    data = applyCommonFilters(data, params, collectionName);
+    const paged = paginate(data, params);
+
     // For users, support nested users key
     if (collectionName === 'users') {
-      return [200, { status: true, data: { users: data, data: data, total: data.length, page: 1, totalPages: 1 } }];
+      return [200, { status: true, data: { ...paged, users: paged.data } }];
     }
-    return [200, { status: true, data: { data, total: data.length, page: 1, totalPages: 1 } }];
+    return [200, { status: true, data: paged }];
   });
 
   // GET SINGLE
@@ -490,7 +608,7 @@ mock.onPost(/\/?finance\/bills\/\d+\/pay-manual/).reply(config => {
     bill.status = 'paid';
     const paymentId = nextId();
     db.payments.unshift({ id: paymentId, student_id: bill.student_id, student_name: bill.student_name, method: 'Tunai (Manual)', status: 'success', amount: paid, bill_type_names: bill.bill_type_name || bill.name, created_at: new Date().toISOString() });
-    addAuditLog('PAYMENT', 'BILL', `Pembayaran manual ${bill.name} untuk ${bill.student_name} (Rp${paid.toLocaleString('id-ID')})`);
+    addAuditLog('PROCESS_PAYMENT', 'payments', `Pembayaran manual ${bill.name} untuk ${bill.student_name} (Rp${paid.toLocaleString('id-ID')})`, paymentId);
     return [200, { status: true, message: 'Pembayaran manual berhasil dicatat', data: { id: paymentId } }];
   }
   return [404, { status: false, message: 'Tagihan tidak ditemukan' }];
@@ -505,7 +623,7 @@ mock.onPost(/\/?finance\/bills\/\d+\/remind/).reply(config => {
     if (parent) {
       addNotification(parent.name, parent.phone_number, 'Pengingat Tagihan', `Yth. ${parent.name}, tagihan ${bill.name} untuk ${bill.student_name} masih belum lunas.`);
     }
-    addAuditLog('REMINDER', 'BILL', `Mengirim pengingat tagihan ${bill.name} untuk ${bill.student_name}`);
+    addAuditLog('SEND_MANUAL_BILL_REMINDER', 'student_bills', `Mengirim pengingat tagihan ${bill.name} untuk ${bill.student_name}`, bill.id);
   }
   return [200, { status: true, message: 'Pengingat demo berhasil dikirim' }];
 });
@@ -568,11 +686,18 @@ mock.onPost(/\/?finance\/payments$/).reply(config => {
     status: 'success',
     amount: payload.amount || 0,
     bill_type_names: items.map(item => item.bill_name).join(', ') || 'Pembayaran Tagihan',
-    created_at: new Date().toISOString()
+    paid_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    details: items.map(item => ({
+      bill_name: item.bill_name,
+      bill_type_name: item.bill_name,
+      period: item.period,
+      amount: item.amount
+    }))
   };
   
   db.payments.unshift(newPayment);
-  addAuditLog('PAYMENT', 'BILL', `Pembayaran ${payload.method || 'Online'} untuk ${studentName} sebesar Rp${(payload.amount || 0).toLocaleString('id-ID')}`);
+  addAuditLog('PROCESS_PAYMENT', 'payments', `Pembayaran ${payload.method || 'Online'} untuk ${studentName} sebesar Rp${(payload.amount || 0).toLocaleString('id-ID')}`, paymentId);
   
   if (payload.deposit_applied > 0 && student) {
     student.deposit_balance = Math.max(0, student.deposit_balance - payload.deposit_applied);
@@ -622,15 +747,23 @@ mock.onGet(/\/?finance\/payments\/([^/]+)\/receipt/).reply(config => {
 });
 
 mock.onGet(/\/?finance\/payments/).reply(config => {
-  const studentId = config.params?.student_id;
-  let data = db.payments;
-  if (studentId) data = data.filter(p => p.student_id === parseInt(studentId));
-  return [200, { status: true, data: { data, total: data.length } }];
+  const params = paramsFrom(config);
+  let data = db.payments.map(payment => ({
+    ...payment,
+    paid_at: payment.paid_at || payment.created_at,
+    details: payment.details || [
+      { bill_name: payment.bill_type_names || 'Pembayaran Tagihan', bill_type_name: payment.bill_type_names || 'Pembayaran Tagihan', period: '', amount: payment.amount }
+    ]
+  }));
+  if (params.student_id) data = data.filter(p => p.student_id === parseInt(params.student_id));
+  data = applyCommonFilters(data, params, 'payments');
+  if (params.student_id) return [200, { status: true, data }];
+  return [200, { status: true, data: paginate(data, params) }];
 });
 
 mock.onGet(/\/?finance\/bill-summaries/).reply(config => {
-  const params = config.params || {};
-  const activeBills = getActive(db.bills);
+  const params = paramsFrom(config);
+  const activeBills = getActive(db.bills).map(enrichBill);
   
   const studentBillsMap = {};
   activeBills.forEach(bill => {
@@ -674,8 +807,18 @@ mock.onGet(/\/?finance\/bill-summaries/).reply(config => {
       id: student.id,
       student_id: student.id,
       student_name: student.name,
+      name: student.name,
+      nis: student.nis,
+      class_id: student.class_id,
+      class_name: student.class_name,
+      major_id: student.major_id,
+      major_name: student.major_name,
+      deposit_balance: student.deposit_balance,
       status,
       outstanding,
+      nearest_due_date: studentBills
+        .filter(b => b.status !== 'paid')
+        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0]?.due_date,
       bill_count: billCount,
       overdue_count: overdueCount,
       partial_count: partialCount,
@@ -695,15 +838,11 @@ mock.onGet(/\/?finance\/bill-summaries/).reply(config => {
   } else if (params.status === 'overdue') {
     filtered = filtered.filter(s => s.overdue_count > 0);
   }
+  if (params.class_id) filtered = filtered.filter(s => Number(s.class_id) === Number(params.class_id));
+  if (params.major_id) filtered = filtered.filter(s => Number(s.major_id) === Number(params.major_id));
+  filtered = applySort(filtered, params.sort);
   
-  const total = filtered.length;
-  const page = parseInt(params.page) || 1;
-  const limit = parseInt(params.limit) || 10;
-  const totalPages = Math.ceil(total / limit) || 1;
-  const start = (page - 1) * limit;
-  const paginated = filtered.slice(start, start + limit);
-
-  return [200, { status: true, data: { data: paginated, total } }];
+  return [200, { status: true, data: paginate(filtered, params) }];
 });
 
 mock.onGet(/\/?finance\/arrears/).reply(config => {
@@ -727,6 +866,11 @@ mock.onGet(/\/?finance\/arrears/).reply(config => {
     const q = String(params.search).toLowerCase();
     arrears = arrears.filter(item => JSON.stringify(item).toLowerCase().includes(q));
   }
+  if (params.class_id) arrears = arrears.filter(item => Number(item.class_id) === Number(params.class_id));
+  if (params.major_id) arrears = arrears.filter(item => Number(item.major_id) === Number(params.major_id));
+  if (params.bill_type_id) arrears = arrears.filter(item => Number(item.bill_type_id) === Number(params.bill_type_id));
+  if (params.status) arrears = arrears.filter(item => params.status === 'outstanding' ? item.status !== 'paid' : item.status === params.status);
+  arrears = applySort(arrears.map(item => ({ ...item, nearest_due_date: item.due_date })), params.sort);
 
   return [200, { status: true, data: paginate(arrears, params) }];
 });
@@ -776,8 +920,26 @@ mock.onPost(/\/?users\/bulk-resend-notification/).reply(config => {
 });
 
 // --- READ-ONLY LOGS ---
-mock.onGet(/\/?notifications(\?.*)?$/).reply(() => [200, { status: true, data: { data: db.notifications, total: db.notifications.length } }]);
-mock.onGet(/\/?audit-logs(\?.*)?$/).reply(() => [200, { status: true, data: { data: db.auditLogs, total: db.auditLogs.length } }]);
+mock.onGet(/\/?notifications(\?.*)?$/).reply(config => {
+  const params = paramsFrom(config);
+  let logs = applyCommonFilters(db.notifications, params, 'notifications');
+  if (params.status) logs = logs.filter(log => log.delivery_status === params.status);
+  return [200, { status: true, data: paginate(logs, params) }];
+});
+mock.onGet(/\/?audit-logs(\?.*)?$/).reply(config => {
+  const params = paramsFrom(config);
+  let logs = [...db.auditLogs];
+  if (params.user_name) {
+    const q = String(params.user_name).toLowerCase();
+    logs = logs.filter(log => JSON.stringify(log).toLowerCase().includes(q));
+  }
+  if (params.action) logs = logs.filter(log => log.action === params.action);
+  if (params.entity_type) logs = logs.filter(log => log.entity_type === params.entity_type);
+  if (params.role) logs = logs.filter(log => log.role === params.role);
+  logs = applySort(logs, params.sort);
+  const paged = paginate(logs, params);
+  return [200, { status: true, data: { ...paged, logs: paged.data } }];
+});
 mock.onGet(/\/?whatsapp\/stats/).reply(() => {
   const countStatus = (items, status) => items.filter(item => item.delivery_status === status).length;
   const sent = countStatus(db.notifications, 'sent') + countStatus(db.notifications, 'delivered') + countStatus(db.notifications, 'read') + countStatus(db.emailNotifications, 'sent') + countStatus(db.emailNotifications, 'delivered') + countStatus(db.emailNotifications, 'read');
